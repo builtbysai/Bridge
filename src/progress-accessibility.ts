@@ -6,7 +6,7 @@ const labelTransferProgress = () => {
   progress.setAttribute("aria-describedby", "transfer-detail");
 };
 
-const labelQueueProgress = (root = document) => {
+const labelQueueProgress = (root: ParentNode = document) => {
   for (const progress of root.querySelectorAll(".queue-item progress")) {
     if (!(progress instanceof HTMLProgressElement)) continue;
     const item = progress.closest(".queue-item");

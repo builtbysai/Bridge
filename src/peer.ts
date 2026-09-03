@@ -4,6 +4,14 @@ import type { SignalPayload } from "./signaling";
 
 export type ConnectionRoute = "connecting" | "direct" | "relayed" | "disconnected";
 
+// TypeScript's DOM lib no longer ships a standalone RTCIceCandidateStats type
+// (only RTCIceCandidatePairStats remains), but browsers still report
+// "local-candidate"/"remote-candidate" entries with this shape from
+// RTCPeerConnection.getStats(). Declare the minimal fields this module reads.
+interface RTCIceCandidateStats extends RTCStats {
+  candidateType?: string;
+}
+
 export type PeerEvents = {
   onSignal: (payload: SignalPayload) => void;
   onChannel: (channel: RTCDataChannel) => void;

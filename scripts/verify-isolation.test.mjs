@@ -1,29 +1,24 @@
 import { describe, expect, it } from "vitest";
 import { findIsolationViolations, isBridgeOwnedPath } from "./verify-isolation.mjs";
 
+// This repository used to live at `bridge/` inside a monorepo alongside sibling
+// projects. Now that Bridge has been extracted into its own repository, every
+// path in a diff is Bridge-owned by definition, so the check is a no-op that
+// always allows every path. See the comment in verify-isolation.mjs.
 describe("Bridge path isolation", () => {
-  it("allows Bridge project files and the two Bridge workflows", () => {
-    expect(isBridgeOwnedPath("bridge/src/main.ts")).toBe(true);
-    expect(isBridgeOwnedPath("bridge/docs/PLAN.md")).toBe(true);
+  it("allows any repository path now that Bridge is a standalone repository", () => {
+    expect(isBridgeOwnedPath("src/main.ts")).toBe(true);
+    expect(isBridgeOwnedPath("docs/PLAN.md")).toBe(true);
     expect(isBridgeOwnedPath(".github/workflows/bridge.yml")).toBe(true);
     expect(isBridgeOwnedPath(".github/workflows/bridge-deploy.yml")).toBe(true);
+    expect(isBridgeOwnedPath("README.md")).toBe(true);
   });
 
-  it("rejects sibling projects and unrelated repository files", () => {
+  it("never reports isolation violations", () => {
     expect(findIsolationViolations([
-      "bridge/src/main.ts",
-      "colortrace/src/main.ts",
-      "extensible-terminal/package.json",
+      "src/main.ts",
       "README.md",
-    ])).toEqual([
-      "colortrace/src/main.ts",
-      "extensible-terminal/package.json",
-      "README.md",
-    ]);
-  });
-
-  it("does not allow similarly prefixed workflow or project paths", () => {
-    expect(isBridgeOwnedPath("bridge-old/src/main.ts")).toBe(false);
-    expect(isBridgeOwnedPath(".github/workflows/bridge-preview.yml")).toBe(false);
+      "server/signaling.ts",
+    ])).toEqual([]);
   });
 });

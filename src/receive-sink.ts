@@ -9,7 +9,7 @@ export interface ReceiveSink {
 
 export class MemoryReceiveSink implements ReceiveSink {
   readonly kind = "memory" as const;
-  private chunks: Uint8Array[] = [];
+  private chunks: Uint8Array<ArrayBuffer>[] = [];
   private closed = false;
   private bytes = 0;
 
@@ -27,7 +27,7 @@ export class MemoryReceiveSink implements ReceiveSink {
     if (this.bytes + chunk.byteLength > this.maxBytes) {
       throw new Error("Transfer exceeds this browser's in-memory receive limit");
     }
-    this.chunks.push(chunk.slice());
+    this.chunks.push(Uint8Array.from(chunk));
     this.bytes += chunk.byteLength;
   }
 

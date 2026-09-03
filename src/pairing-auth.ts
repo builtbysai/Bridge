@@ -2,7 +2,7 @@ import { bytesFromHex, bytesToHex } from "./crypto";
 
 const encoder = new TextEncoder();
 
-const secretBytes = (secretHex: string): Uint8Array => {
+const secretBytes = (secretHex: string): Uint8Array<ArrayBuffer> => {
   const secret = bytesFromHex(secretHex);
   if (secret.byteLength < 32) throw new Error("Pairing secret must contain at least 256 bits");
   return secret;
@@ -35,7 +35,7 @@ const deriveConfirmationKey = async (secretHex: string, sessionId: string): Prom
   );
 };
 
-const confirmationMessage = (sessionId: string, role: ConfirmationRole): Uint8Array =>
+const confirmationMessage = (sessionId: string, role: ConfirmationRole): Uint8Array<ArrayBuffer> =>
   encoder.encode(`bridge-key-confirm:v1:${sessionId}:${role}`);
 
 export const createKeyConfirmationProof = async (
@@ -54,7 +54,7 @@ export const verifyKeyConfirmationProof = async (
   role: ConfirmationRole,
   proofHex: string
 ): Promise<boolean> => {
-  let proof: Uint8Array;
+  let proof: Uint8Array<ArrayBuffer>;
   try {
     proof = bytesFromHex(proofHex);
   } catch {

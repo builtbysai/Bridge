@@ -3,7 +3,7 @@ const encoder = new TextEncoder();
 const hex = (bytes: Uint8Array): string =>
   Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
 
-const bytesFromHex = (value: string): Uint8Array => {
+const bytesFromHex = (value: string): Uint8Array<ArrayBuffer> => {
   if (!/^[0-9a-f]+$/i.test(value) || value.length % 2 !== 0) {
     throw new Error("Invalid hexadecimal key material");
   }
@@ -41,7 +41,7 @@ export const deriveSessionKey = async (secretHex: string, sessionId: string): Pr
  * transfer nonce. Bridge rejects transfers large enough to overflow the
  * 32-bit chunk counter before they can be sent.
  */
-const chunkIv = (transferNonce: Uint8Array, chunkIndex: number): Uint8Array => {
+const chunkIv = (transferNonce: Uint8Array, chunkIndex: number): Uint8Array<ArrayBuffer> => {
   if (transferNonce.byteLength !== 12) throw new Error("Transfer nonce must be 12 bytes");
   if (!Number.isSafeInteger(chunkIndex) || chunkIndex < 0 || chunkIndex > 0xffff_ffff) {
     throw new Error("Chunk index is outside the supported AES-GCM IV range");
@@ -86,7 +86,7 @@ export const decryptChunk = async (
   ciphertext
 );
 
-export const randomTransferNonce = (): Uint8Array => crypto.getRandomValues(new Uint8Array(12));
+export const randomTransferNonce = (): Uint8Array<ArrayBuffer> => crypto.getRandomValues(new Uint8Array(12));
 
 export const bytesToHex = hex;
 export { bytesFromHex };

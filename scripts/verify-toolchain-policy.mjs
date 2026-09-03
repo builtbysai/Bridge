@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const bridgeRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
-const repoRoot = resolve(bridgeRoot, "..");
+const repoRoot = bridgeRoot;
 
 export const REVIEWED_NODE_VERSION = "22.23.2";
 export const REVIEWED_NPM_VERSION = "10.9.8";
