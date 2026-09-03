@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#070a10" />
+  <meta name="description" content="Temporary browser-to-browser device transfer." />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" href="/icons/bridge-192.svg" type="image/svg+xml" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Bridge</title>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module" src="/src/app-entry.js"></script>
+  <script type="module" src="/src/privacy-controls.ts"></script>
+  <script type="module" src="/src/network-status.ts"></script>
+  <script type="module" src="/src/device-controls.ts"></script>
+  <script type="module" src="/src/progress-accessibility.ts"></script>
+  <script type="module" src="/src/transfer-announcements.ts"></script>
+  <script type="module" src="/src/transfer-wake-lock.ts"></script>
+  <script type="module" src="/src/service-worker-registration.ts"></script>
+</body>
+</html>
