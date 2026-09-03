@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { classifyLockfileMode, verifyWorkflowForLockfileMode } from "./verify-lockfile-mode.mjs";
 
 const bridgeRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
-const repoRoot = resolve(bridgeRoot, "..");
+const repoRoot = bridgeRoot;
 
 const REQUIRED_FILES = [
   ".npmrc",
@@ -231,7 +231,16 @@ export function isImmutableGitHubActionReference(reference) {
 
   const action = reference.slice(0, separator);
   const revision = reference.slice(separator + 1);
-  return action.includes("/") && !action.startsWith("./") && /^[0-9a-f]{40}$/i.test(revision);
+  // GitHub Action references are bare `owner/repo[/path]` slugs. Excluding
+  // "://" also rejects docker://<image> steps, which use the same
+  // `uses: <ref>@<tag>` syntax but reference a container image rather than
+  // a GitHub Action and are never immutably pinnable this way.
+  return (
+    action.includes("/") &&
+    !action.startsWith("./") &&
+    !action.includes("://") &&
+    /^[0-9a-f]{40}$/i.test(revision)
+  );
 }
 
 function validateWorkflowActionPins(workflow, content) {
@@ -315,7 +324,7 @@ function validateDeployArtifactIntegrity(workflow, content) {
   if (!content.includes("sha256sum --check bridge-artifacts.sha256")) {
     fail(`${workflow} must verify the generated release artifact SHA-256 manifest before upload.`);
   }
-  for (const requiredPath of ["bridge/dist", "bridge/dist-server", "bridge/bridge-artifacts.sha256"]) {
+  for (const requiredPath of ["dist", "dist-server", "bridge-artifacts.sha256"]) {
     if (!content.includes(requiredPath)) {
       fail(`${workflow} must upload ${requiredPath} in the isolated Bridge release artifact.`);
     }
@@ -355,7 +364,7 @@ function validateWorkflows(lockfileMode) {
 
 function main() {
   const missing = REQUIRED_FILES.filter((path) => !existsSync(resolve(bridgeRoot, path)));
-  for (const path of missing) fail(`required release artifact is missing: bridge/${path}.`);
+  for (const path of missing) fail(`required release artifact is missing: ${path}.`);
 
   let lockfileMode;
   try {

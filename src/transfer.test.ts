@@ -26,11 +26,11 @@ class FakeDataChannel extends EventTarget {
 
 class RecordingSink implements ReceiveSink {
   readonly kind = "memory" as const;
-  chunks: Uint8Array[] = [];
+  chunks: Uint8Array<ArrayBuffer>[] = [];
   aborted = false;
 
   async write(chunk: Uint8Array): Promise<void> {
-    this.chunks.push(chunk.slice());
+    this.chunks.push(Uint8Array.from(chunk));
   }
 
   async close(): Promise<Blob> {
@@ -144,7 +144,12 @@ describe("TransferEngine", () => {
     const [left, right] = pairFakeChannels();
     const key = await deriveSessionKey("22".repeat(32), "request-test");
 
-    let incoming: IncomingRequest | null = null;
+    // Using a plain `let` here trips a known TypeScript control-flow-analysis
+    // limitation: reassigning the variable only inside a callback narrows its
+    // type to `never` at later read sites (reproducible even with a trivial
+    // synchronous callback, unrelated to this file's specific logic). Wrapping
+    // it in an object sidesteps the false narrowing.
+    const state: { incoming: IncomingRequest | null } = { incoming: null };
     let declinedReason: string | undefined;
 
     const requester = new TransferEngine(asRTC(left), key, {
@@ -154,7 +159,7 @@ describe("TransferEngine", () => {
     });
     const responder = new TransferEngine(asRTC(right), key, {
       onIncomingRequest: request => {
-        incoming = request;
+        state.incoming = request;
         responder.declineRequest(request.requestId, "Not available");
       }
     });
@@ -162,7 +167,7 @@ describe("TransferEngine", () => {
     requester.request("file");
     await new Promise(resolve => setTimeout(resolve, 0));
 
-    expect(incoming?.kind).toBe("file");
+    expect(state.incoming?.kind).toBe("file");
     expect(declinedReason).toBe("Not available");
   });
 

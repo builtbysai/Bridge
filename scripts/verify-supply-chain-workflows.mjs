@@ -3,14 +3,14 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const bridgeRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
-const repoRoot = resolve(bridgeRoot, "..");
+const repoRoot = bridgeRoot;
 
 const CI_WORKFLOW = ".github/workflows/bridge.yml";
 const DEPLOY_WORKFLOW = ".github/workflows/bridge-deploy.yml";
-const LOCKFILE_GENERATOR = "bridge/scripts/generate-lockfiles.mjs";
-const LOCKFILE_WORKSPACE = "bridge/scripts/lockfile-workspace.mjs";
-const LOCKFILE_PUBLICATION = "bridge/scripts/lockfile-publication.mjs";
-const NPM_ENVIRONMENT = "bridge/scripts/npm-environment.mjs";
+const LOCKFILE_GENERATOR = "scripts/generate-lockfiles.mjs";
+const LOCKFILE_WORKSPACE = "scripts/lockfile-workspace.mjs";
+const LOCKFILE_PUBLICATION = "scripts/lockfile-publication.mjs";
+const NPM_ENVIRONMENT = "scripts/npm-environment.mjs";
 
 const readRepoFile = (path) => readFileSync(resolve(repoRoot, path), "utf8");
 
@@ -23,20 +23,26 @@ function requireText(file, content, text, description) {
   if (!content.includes(text)) fail(`${file} must ${description}; missing ${JSON.stringify(text)}.`);
 }
 
+function requirePattern(file, content, pattern, description) {
+  if (!pattern.test(content)) fail(`${file} must ${description}; missing a match for ${pattern}.`);
+}
+
 function forbidText(file, content, text, description) {
   if (content.includes(text)) fail(`${file} must ${description}; forbidden ${JSON.stringify(text)}.`);
 }
 
 function requireOrder(file, content, orderedTexts, description) {
+  // Search forward from just past the previous match rather than always from
+  // the start of the content. A naive content.indexOf(text) on every entry
+  // re-finds the first occurrence even when `text` repeats later in
+  // orderedTexts (as "npm run verify:committed-lockfiles -- --require-present"
+  // legitimately does, both before and after the main validation steps),
+  // which would otherwise report a false "out of order" failure.
   let previousIndex = -1;
   for (const text of orderedTexts) {
-    const index = content.indexOf(text);
+    const index = content.indexOf(text, previousIndex + 1);
     if (index === -1) {
       fail(`${file} cannot verify ${description}; missing ${JSON.stringify(text)}.`);
-      return;
-    }
-    if (index <= previousIndex) {
-      fail(`${file} must keep ${description}; ${JSON.stringify(text)} appears out of order.`);
       return;
     }
     previousIndex = index;
@@ -68,7 +74,16 @@ export function isImmutableGitHubActionReference(reference) {
   if (separator <= 0) return false;
   const action = reference.slice(0, separator);
   const revision = reference.slice(separator + 1);
-  return action.includes("/") && !action.startsWith("./") && /^[0-9a-f]{40}$/i.test(revision);
+  // GitHub Action references are bare `owner/repo[/path]` slugs. Excluding
+  // "://" also rejects docker://<image> steps, which use the same
+  // `uses: <ref>@<tag>` syntax but reference a container image rather than
+  // a GitHub Action and are never immutably pinnable this way.
+  return (
+    action.includes("/") &&
+    !action.startsWith("./") &&
+    !action.includes("://") &&
+    /^[0-9a-f]{40}$/i.test(revision)
+  );
 }
 
 export function findNpmCiWithoutIgnoreScripts(content) {
@@ -90,8 +105,11 @@ function validateActionPins(workflow, content) {
 function validateGenerator(content) {
   requireText(LOCKFILE_GENERATOR, content, 'const PUBLIC_REGISTRY = "https://registry.npmjs.org/"', "pin lockfile resolution to the reviewed public npm registry");
   requireText(LOCKFILE_GENERATOR, content, "withIsolatedLockfileWorkspace({ bridgeRoot, runtimeRoot }", "generate both lockfiles inside the reviewed isolated staging helper");
-  requireText(LOCKFILE_GENERATOR, content, "validateLockfile(stagedBridgeRoot", "validate the staged build dependency graph before publication");
-  requireText(LOCKFILE_GENERATOR, content, "validateLockfile(stagedRuntimeRoot", "validate the staged runtime dependency graph before publication");
+  // Tolerant of the call spanning multiple lines (e.g. one argument per line),
+  // since the two are functionally equivalent and a reformat should not fail
+  // supply-chain policy.
+  requirePattern(LOCKFILE_GENERATOR, content, /validateLockfile\(\s*stagedBridgeRoot/, "validate the staged build dependency graph before publication");
+  requirePattern(LOCKFILE_GENERATOR, content, /validateLockfile\(\s*stagedRuntimeRoot/, "validate the staged runtime dependency graph before publication");
   requireText(LOCKFILE_GENERATOR, content, "publishLockfilePair([", "publish the validated lockfiles only as a paired operation");
   requireText(LOCKFILE_GENERATOR, content, "sanitizeNpmEnvironment(process.env)", "strip ambient npm configuration and authentication variables before spawning npm");
   requireText(LOCKFILE_GENERATOR, content, "--userconfig=", "prevent ambient npm user configuration from influencing resolution");

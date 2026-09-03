@@ -40,54 +40,74 @@ const waitForHealth = async (port: number): Promise<void> => {
   throw new Error("Timed out waiting for signaling test server");
 };
 
+// The signaling server can send more than one message to the same socket
+// back-to-back and fully synchronously (e.g. "turn-credentials" immediately
+// followed by "session-joined"/"peer-joined" once a guest joins). Over a
+// loopback connection both frequently arrive in a single underlying read,
+// so `ws` emits both "message" events synchronously in the same tick. A
+// helper built on `socket.once("message", ...)` only captures the first of
+// those and silently drops the rest, since nothing is listening by the time
+// the second event fires. JsonMessageReader instead subscribes once, for
+// the socket's whole lifetime, and buffers every message into a queue so
+// callers can pull messages one at a time without ever missing one that
+// arrived early.
+class JsonMessageReader {
+  private readonly queue: Record<string, unknown>[] = [];
+  private readonly waiters: Array<{
+    resolve: (message: Record<string, unknown>) => void;
+    reject: (error: Error) => void;
+  }> = [];
+
+  constructor(private readonly socket: WebSocket) {
+    socket.on("message", (data: RawData) => {
+      const message = JSON.parse(data.toString()) as Record<string, unknown>;
+      const waiter = this.waiters.shift();
+      if (waiter) {
+        waiter.resolve(message);
+      } else {
+        this.queue.push(message);
+      }
+    });
+    socket.on("error", (error: Error) => {
+      const waiter = this.waiters.shift();
+      waiter?.reject(error);
+    });
+  }
+
+  async next(timeoutMs = 2_000): Promise<Record<string, unknown>> {
+    const queued = this.queue.shift();
+    if (queued) return queued;
+
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        const index = this.waiters.findIndex(waiter => waiter.resolve === resolveAndClear);
+        if (index >= 0) this.waiters.splice(index, 1);
+        reject(new Error("Timed out waiting for signaling message"));
+      }, timeoutMs);
+      const resolveAndClear = (message: Record<string, unknown>) => {
+        clearTimeout(timer);
+        resolve(message);
+      };
+      const rejectAndClear = (error: Error) => {
+        clearTimeout(timer);
+        reject(error);
+      };
+      this.waiters.push({ resolve: resolveAndClear, reject: rejectAndClear });
+    });
+  }
+
+  async expectNoMessage(durationMs = 100): Promise<void> {
+    await new Promise(resolve => setTimeout(resolve, durationMs));
+    if (this.queue.length > 0) {
+      throw new Error(`Unexpected signaling message before authenticated join: ${JSON.stringify(this.queue[0])}`);
+    }
+  }
+}
+
 const connect = async (url: string): Promise<WebSocket> => new Promise((resolve, reject) => {
   const socket = new WebSocket(url, { headers: { Origin: TEST_ORIGIN } });
   socket.once("open", () => resolve(socket));
   socket.once("error", reject);
-});
-
-const nextJson = async (socket: WebSocket): Promise<Record<string, unknown>> => new Promise((resolve, reject) => {
-  const timer = setTimeout(() => {
-    cleanup();
-    reject(new Error("Timed out waiting for signaling message"));
-  }, 2_000);
-  const cleanup = () => {
-    clearTimeout(timer);
-    socket.off("message", onMessage);
-    socket.off("error", onError);
-  };
-  const onMessage = (data: RawData) => {
-    cleanup();
-    resolve(JSON.parse(data.toString()) as Record<string, unknown>);
-  };
-  const onError = (error: Error) => {
-    cleanup();
-    reject(error);
-  };
-  socket.once("message", onMessage);
-  socket.once("error", onError);
-});
-
-const expectNoMessage = async (socket: WebSocket, durationMs = 100): Promise<void> => new Promise((resolve, reject) => {
-  const timer = setTimeout(() => {
-    cleanup();
-    resolve();
-  }, durationMs);
-  const cleanup = () => {
-    clearTimeout(timer);
-    socket.off("message", onMessage);
-    socket.off("error", onError);
-  };
-  const onMessage = (data: RawData) => {
-    cleanup();
-    reject(new Error(`Unexpected signaling message before authenticated join: ${data.toString()}`));
-  };
-  const onError = (error: Error) => {
-    cleanup();
-    reject(error);
-  };
-  socket.once("message", onMessage);
-  socket.once("error", onError);
 });
 
 describe("signaling-issued TURN credentials", () => {
@@ -106,6 +126,11 @@ describe("signaling-issued TURN credentials", () => {
         SIGNAL_ALLOWED_ORIGINS: TEST_ORIGIN,
         SIGNAL_TURN_URLS: TURN_URLS.join(","),
         SIGNAL_TURN_SHARED_SECRET: TURN_SECRET,
+        // The signaling config requires the TURN credential TTL to be at
+        // least as long as the session TTL (relay recovery must remain
+        // available for the whole session lifetime), so this test's short
+        // 60s credential TTL needs an equally short session TTL.
+        SESSION_TTL_MS: "60000",
         SIGNAL_TURN_CREDENTIAL_TTL_SECONDS: "60",
         SIGNAL_SHUTDOWN_GRACE_MS: "1000",
       },
@@ -121,20 +146,22 @@ describe("signaling-issued TURN credentials", () => {
   it("mints temporary credentials only after a verified guest joins and sends them before negotiation", async () => {
     const host = await connect(signalUrl);
     const guest = await connect(signalUrl);
+    const hostMessages = new JsonMessageReader(host);
+    const guestMessages = new JsonMessageReader(guest);
 
     try {
       host.send(JSON.stringify({ type: "create-session", verifier: VERIFIER }));
-      const created = await nextJson(host);
+      const created = await hostMessages.next();
       expect(created.type).toBe("session-created");
       const sessionId = created.sessionId;
       expect(typeof sessionId).toBe("string");
 
-      await expectNoMessage(host);
+      await hostMessages.expectNoMessage();
 
       guest.send(JSON.stringify({ type: "join-session", sessionId, verifier: VERIFIER }));
 
-      const guestTurn = await nextJson(guest);
-      const hostTurn = await nextJson(host);
+      const guestTurn = await guestMessages.next();
+      const hostTurn = await hostMessages.next();
       expect(guestTurn.type).toBe("turn-credentials");
       expect(hostTurn.type).toBe("turn-credentials");
       expect(guestTurn).toEqual(hostTurn);
@@ -150,8 +177,8 @@ describe("signaling-issued TURN credentials", () => {
       expect(guestTurn.credential).toBe(expectedCredential);
       expect(Number(guestTurn.expiresAt)).toBeGreaterThan(Date.now());
 
-      expect((await nextJson(guest)).type).toBe("session-joined");
-      expect((await nextJson(host)).type).toBe("peer-joined");
+      expect((await guestMessages.next()).type).toBe("session-joined");
+      expect((await hostMessages.next()).type).toBe("peer-joined");
     } finally {
       host.close();
       guest.close();

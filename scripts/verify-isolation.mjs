@@ -1,12 +1,15 @@
 import { execFileSync } from "node:child_process";
 
-const ALLOWED_WORKFLOWS = new Set([
-  ".github/workflows/bridge.yml",
-  ".github/workflows/bridge-deploy.yml",
-]);
-
-export function isBridgeOwnedPath(path) {
-  return path.startsWith("bridge/") || ALLOWED_WORKFLOWS.has(path);
+// Historically this repository lived at `bridge/` inside the Creative-Experiments
+// monorepo alongside sibling projects (colortrace/, extensible-terminal/), and this
+// check failed a PR that touched anything outside `bridge/` or the two Bridge
+// workflow files. Bridge was extracted into its own repository, so every path in
+// this repository is Bridge-owned by definition; there is no longer a sibling
+// project for a change to leak into. The check is kept as a canary (and to keep
+// the CI/guard-coverage wiring below intact) but now only fails on a git diff
+// query breaking, not on any particular path.
+export function isBridgeOwnedPath(_path) {
+  return true;
 }
 
 export function findIsolationViolations(paths) {
@@ -15,7 +18,7 @@ export function findIsolationViolations(paths) {
 
 function git(...args) {
   return execFileSync("git", args, {
-    cwd: new URL("../..", import.meta.url),
+    cwd: new URL("..", import.meta.url),
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   }).trim();

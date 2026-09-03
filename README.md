@@ -37,6 +37,6 @@ When the signaling runtime is started with `NODE_ENV=production`, `SIGNAL_ALLOWE
 
 Bridge CI and Bridge Deploy are currently manual-only to avoid noisy GitHub Actions failures before runner execution. They must remain isolated to Bridge paths and never build or deploy sibling projects.
 
-## Monorepo isolation
+## Repository history
 
-This project is self-contained under `bridge/`. It does not modify or depend on `colortrace/` or `extensible-terminal/`. The only repository-level files Bridge may change are its dedicated workflows under `.github/workflows/bridge.yml` and `.github/workflows/bridge-deploy.yml`.
+Bridge was extracted from the Creative-Experiments monorepo, where it previously lived under `bridge/` alongside sibling projects (`colortrace/`, `extensible-terminal/`). This repository now contains only Bridge; the workflows remain at `.github/workflows/bridge.yml` and `.github/workflows/bridge-deploy.yml`, and `scripts/verify-isolation.mjs` is kept as a canary (see the comment in that file) rather than removed.

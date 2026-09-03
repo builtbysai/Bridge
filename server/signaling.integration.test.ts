@@ -54,12 +54,24 @@ const connect = async (url: string): Promise<WebSocket> => new Promise((resolve,
   socket.once("error", onError);
 });
 
+// `WebSocket#terminate()` called while the socket is still CONNECTING (as it
+// always is here: we're aborting a handshake the server rejected or that
+// timed out) makes `ws` schedule an async "error" event on the socket for
+// the aborted handshake. If nothing is listening by then, Node treats that
+// as an unhandled "error" event and throws it, failing the whole test run.
+// Attach a permanent no-op listener before terminating so that expected
+// abort error is swallowed instead.
+const terminateQuietly = (socket: WebSocket): void => {
+  socket.on("error", () => { /* expected: terminate() aborts the in-flight handshake */ });
+  socket.terminate();
+};
+
 const expectUpgradeRejected = async (url: string, origin?: string): Promise<number> => new Promise((resolve, reject) => {
   const options = origin ? { headers: { Origin: origin } } : undefined;
   const socket = new WebSocket(url, options);
   const timer = setTimeout(() => {
     cleanup();
-    socket.terminate();
+    terminateQuietly(socket);
     reject(new Error("Timed out waiting for rejected WebSocket upgrade"));
   }, 2_000);
   const cleanup = () => {
@@ -70,7 +82,7 @@ const expectUpgradeRejected = async (url: string, origin?: string): Promise<numb
   };
   const onUnexpectedResponse = (_request: unknown, response: { statusCode?: number }) => {
     cleanup();
-    socket.terminate();
+    terminateQuietly(socket);
     resolve(response.statusCode ?? 0);
   };
   const onOpen = () => {
@@ -114,27 +126,74 @@ const sendRawUpgrade = async (port: number, hostHeader: string): Promise<string>
   });
 });
 
-const nextJson = async (socket: WebSocket, timeoutMs = 2_000): Promise<Record<string, unknown>> => new Promise((resolve, reject) => {
-  const timer = setTimeout(() => {
-    cleanup();
-    reject(new Error("Timed out waiting for signaling message"));
-  }, timeoutMs);
-  const cleanup = () => {
-    clearTimeout(timer);
-    socket.off("message", onMessage);
-    socket.off("error", onError);
-  };
-  const onMessage = (data: RawData) => {
-    cleanup();
-    resolve(JSON.parse(data.toString()) as Record<string, unknown>);
-  };
-  const onError = (error: Error) => {
-    cleanup();
-    reject(error);
-  };
-  socket.once("message", onMessage);
-  socket.once("error", onError);
-});
+// The signaling server frequently answers two different sockets in the same
+// synchronous handler (e.g. joining a session sends "session-joined" to the
+// guest and "peer-joined" to the host back-to-back). Test bodies here
+// naturally read those responses one after another too ("await the guest's
+// message, then await the host's"), which means the host's message can
+// physically arrive well before the test gets around to asking for it. A
+// bare `socket.once("message", ...)` registered only at that later point
+// would have missed it entirely, since nothing was listening when it
+// arrived, causing sporadic timeouts or reading the *next* unrelated
+// message. JsonMessageReader instead subscribes for a socket's whole
+// lifetime the first time it's asked for, buffering every message into a
+// queue so a later `next()` call can never lose one that arrived early.
+class JsonMessageReader {
+  private readonly queue: Record<string, unknown>[] = [];
+  private readonly waiters: Array<{
+    resolve: (message: Record<string, unknown>) => void;
+    reject: (error: Error) => void;
+  }> = [];
+
+  constructor(socket: WebSocket) {
+    socket.on("message", (data: RawData) => {
+      const message = JSON.parse(data.toString()) as Record<string, unknown>;
+      const waiter = this.waiters.shift();
+      if (waiter) {
+        waiter.resolve(message);
+      } else {
+        this.queue.push(message);
+      }
+    });
+    socket.on("error", (error: Error) => {
+      const waiter = this.waiters.shift();
+      waiter?.reject(error);
+    });
+  }
+
+  async next(timeoutMs = 2_000): Promise<Record<string, unknown>> {
+    const queued = this.queue.shift();
+    if (queued) return queued;
+
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        const index = this.waiters.findIndex(waiter => waiter.resolve === resolveAndClear);
+        if (index >= 0) this.waiters.splice(index, 1);
+        reject(new Error("Timed out waiting for signaling message"));
+      }, timeoutMs);
+      const resolveAndClear = (message: Record<string, unknown>) => {
+        clearTimeout(timer);
+        resolve(message);
+      };
+      const rejectAndClear = (error: Error) => {
+        clearTimeout(timer);
+        reject(error);
+      };
+      this.waiters.push({ resolve: resolveAndClear, reject: rejectAndClear });
+    });
+  }
+}
+
+const messageReaders = new WeakMap<WebSocket, JsonMessageReader>();
+
+const nextJson = async (socket: WebSocket, timeoutMs = 2_000): Promise<Record<string, unknown>> => {
+  let reader = messageReaders.get(socket);
+  if (!reader) {
+    reader = new JsonMessageReader(socket);
+    messageReaders.set(socket, reader);
+  }
+  return reader.next(timeoutMs);
+};
 
 describe("signaling server integration", () => {
   let port = 0;
@@ -149,7 +208,16 @@ describe("signaling server integration", () => {
       env: {
         ...process.env,
         PORT: String(port),
-        SESSION_TTL_MS: "500",
+        // A short, shared SESSION_TTL_MS here previously raced every test in
+        // this describe block against idle-session expiry: the very first
+        // request a freshly spawned tsx child process handles can be slow
+        // (JIT/module-transform cold start), which could burn through a
+        // sub-second TTL before a session's create -> join round trip even
+        // finished, flakily delivering "session-closed" (expired) instead
+        // of "peer-joined". These tests don't exercise expiry, so give
+        // sessions a generous lifetime here and exercise the short-TTL
+        // expiry behavior in its own isolated server below instead.
+        SESSION_TTL_MS: "60000",
         SESSION_CLEANUP_INTERVAL_MS: "20",
         SIGNAL_SHUTDOWN_GRACE_MS: "1000",
         SIGNAL_ALLOWED_ORIGINS: TEST_ORIGIN,
@@ -277,15 +345,48 @@ describe("signaling server integration", () => {
     }
   });
 
+});
+
+// Idle-session expiry needs a much shorter SESSION_TTL_MS than any other
+// test here should have to share, so it gets its own server instance: a
+// short TTL is only safe to race against when nothing else in the same
+// process is also creating sessions and depending on them staying alive.
+describe("signaling server integration - idle session expiry", () => {
+  let expiryPort = 0;
+  let expiryChildProcess: ChildProcess | null = null;
+  let expirySignalUrl = "";
+
+  beforeAll(async () => {
+    expiryPort = await reservePort();
+    expirySignalUrl = `ws://127.0.0.1:${expiryPort}/signal`;
+    expiryChildProcess = spawn(process.execPath, ["--import", "tsx", "server/signaling.ts"], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        PORT: String(expiryPort),
+        SESSION_TTL_MS: "500",
+        SESSION_CLEANUP_INTERVAL_MS: "20",
+        SIGNAL_SHUTDOWN_GRACE_MS: "1000",
+        SIGNAL_ALLOWED_ORIGINS: TEST_ORIGIN,
+      },
+      stdio: "pipe"
+    });
+    await waitForHealth(expiryPort);
+  }, 10_000);
+
+  afterAll(() => {
+    expiryChildProcess?.kill("SIGTERM");
+  });
+
   it("expires and cleans up idle sessions", async () => {
-    const host = await connect(signalUrl);
+    const host = await connect(expirySignalUrl);
     try {
       const createdPromise = nextJson(host);
       host.send(JSON.stringify({ type: "create-session", verifier: GOOD_VERIFIER }));
       await expect(createdPromise).resolves.toMatchObject({ type: "session-created" });
-      await expect(nextJson(host, 2_000)).resolves.toMatchObject({ type: "session-closed", reason: "expired" });
+      await expect(nextJson(host, 5_000)).resolves.toMatchObject({ type: "session-closed", reason: "expired" });
     } finally {
       host.close();
     }
-  });
+  }, 10_000);
 });

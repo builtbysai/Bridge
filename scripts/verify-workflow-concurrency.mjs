@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const bridgeRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
-const repoRoot = resolve(bridgeRoot, "..");
+const repoRoot = bridgeRoot;
 const WORKFLOWS = new Map([
   [".github/workflows/bridge.yml", /^bridge-ci-\$\{\{ github\.ref \}\}$/],
   [".github/workflows/bridge-deploy.yml", /^bridge-deploy-production$/],

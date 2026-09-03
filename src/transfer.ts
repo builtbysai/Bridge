@@ -75,7 +75,7 @@ type ChannelWaiter = {
   timer: ReturnType<typeof setTimeout>;
 };
 
-type OutboundSource = File | Uint8Array;
+type OutboundSource = File | Uint8Array<ArrayBuffer>;
 
 type OutboundState = {
   offer: IncomingTransfer;
@@ -426,12 +426,12 @@ export class TransferEngine {
     });
   }
 
-  private async readSourceChunk(source: OutboundSource, start: number, end: number): Promise<Uint8Array> {
+  private async readSourceChunk(source: OutboundSource, start: number, end: number): Promise<Uint8Array<ArrayBuffer>> {
     if (source instanceof Uint8Array) return source.subarray(start, end);
     return new Uint8Array(await source.slice(start, end).arrayBuffer());
   }
 
-  private async sendEncryptedChunk(offer: IncomingTransfer, index: number, plaintext: Uint8Array, nonce: Uint8Array): Promise<void> {
+  private async sendEncryptedChunk(offer: IncomingTransfer, index: number, plaintext: Uint8Array<ArrayBuffer>, nonce: Uint8Array): Promise<void> {
     const encrypted = await encryptChunk(
       this.sessionKey,
       nonce,
