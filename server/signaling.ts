@@ -40,8 +40,31 @@ type Peer = {
 type Session = {
   id: string;
   verifier: Buffer;
+  createdAt: number;
   expiresAt: number;
   peers: Map<Role, Peer>;
+};
+
+// A session's expiresAt is renewed on legitimate signaling activity from an
+// attached peer (see renewSessionExpiry) so that two actively-communicating
+// peers aren't torn down purely because SESSION_TTL_MS elapsed on the wall
+// clock while they were still negotiating or recovering a connection.
+// Renewal is bounded, not unlimited: it can never push a session's lifetime
+// past SESSION_MAX_LIFETIME_MS from creation, so an idle or abandoned
+// session still expires. The cap scales with the configured SESSION_TTL_MS
+// (a deployment that intentionally runs a longer or shorter base TTL gets a
+// proportionally longer or shorter renewal window) but never exceeds the
+// same 24h ceiling SESSION_TTL_MS itself is bounded to in config.ts.
+const SESSION_MAX_LIFETIME_MULTIPLIER = 6;
+const SESSION_MAX_LIFETIME_MS = Math.min(
+  SESSION_TTL_MS * SESSION_MAX_LIFETIME_MULTIPLIER,
+  24 * 60 * 60 * 1000,
+);
+
+const renewSessionExpiry = (session: Session): void => {
+  const now = Date.now();
+  const cap = session.createdAt + SESSION_MAX_LIFETIME_MS;
+  session.expiresAt = Math.min(now + SESSION_TTL_MS, cap);
 };
 
 const sessions = new Map<string, Session>();
@@ -289,10 +312,12 @@ wss.on("connection", (socket, request) => {
         return;
       }
 
+      const now = Date.now();
       const session: Session = {
         id,
         verifier,
-        expiresAt: Date.now() + SESSION_TTL_MS,
+        createdAt: now,
+        expiresAt: now + SESSION_TTL_MS,
         peers: new Map([["host", { socket, role: "host" }]]),
       };
       sessions.set(id, session);
@@ -367,6 +392,8 @@ wss.on("connection", (socket, request) => {
         sendError(socket, "invalid-route-report");
         return;
       }
+      const reportingSession = sessions.get(attachedSessionId);
+      if (reportingSession) renewSessionExpiry(reportingSession);
       metrics.reportRoute(`${attachedSessionId}:${attachedRole}`, route);
       return;
     }
@@ -381,6 +408,7 @@ wss.on("connection", (socket, request) => {
         sendError(socket, "session-not-found");
         return;
       }
+      renewSessionExpiry(session);
       const targetRole: Role = attachedRole === "host" ? "guest" : "host";
       const target = session.peers.get(targetRole);
       if (!target) {

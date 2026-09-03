@@ -170,17 +170,22 @@ export class BridgeSession {
         await this.peer?.acceptSignal(event.payload);
         return;
       case "peer-left":
+        if (this.hasHealthyPeerConnection()) return;
         this.recovery.stop();
         this.cleanupPeer();
         this.emitState(this.role === "host" ? "waiting" : "closed", "Peer disconnected");
         return;
       case "session-closed":
+        // The signaling channel is gone regardless of what we do with the
+        // peer connection below, so always mark it disconnected.
+        this.signaling.disconnect();
+        if (this.hasHealthyPeerConnection()) return;
         this.recovery.stop();
         this.cleanupPeer();
-        this.signaling.disconnect();
         this.emitState("closed", event.reason);
         return;
       case "socket-closed":
+        if (this.hasHealthyPeerConnection()) return;
         this.recovery.stop();
         this.cleanupPeer();
         if (this.state !== "closed") {
@@ -332,6 +337,23 @@ export class BridgeSession {
     } catch (error) {
       this.failAuthentication(channel, error instanceof Error ? error.message : "Peer pairing confirmation failed");
     }
+  }
+
+  // The signaling WebSocket is a separate transport from the already
+  // negotiated RTCPeerConnection: once the peer connection is "connected",
+  // the actual transfer flows over the data channel and no longer depends
+  // on signaling. Losing signaling (TTL expiry, a network blip, the other
+  // peer's socket dropping) should not by itself tear down a healthy,
+  // in-progress transfer. If the peer connection isn't healthy yet -- still
+  // negotiating, or already disconnected/failed -- losing signaling means
+  // it can no longer be established or recovered, so the existing immediate
+  // cleanup is still correct there. A later "failed"/"closed" report from
+  // the RTCPeerConnection itself (via onStateChange, and the existing
+  // recovery-exhaustion/ICE-restart-failure paths that follow from it)
+  // still tears the peer down -- this only defers that decision to the
+  // peer connection's own state instead of the signaling socket's.
+  private hasHealthyPeerConnection(): boolean {
+    return this.peer?.connection.connectionState === "connected";
   }
 
   private cleanupPeer(): void {
