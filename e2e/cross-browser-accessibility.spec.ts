@@ -58,23 +58,29 @@ test("host shell remains accessible and keyboard reachable across browser engine
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
   await expectNoPageOverflow(page);
   await expectNoSeriousAccessibilityViolations(page);
-  await expectKeyboardReachability(page, 4);
+  // All primary [data-action] buttons stay disabled (and out of tab order)
+  // until a real peer connects, which never happens in these single-page
+  // tests -- so only 3 controls are ever focusable here, not 4.
+  await expectKeyboardReachability(page, 3);
 });
 
 test("receive portal remains accessible and keyboard reachable across browser engines", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 720 });
-  await page.goto("/?session=ABC123&portal=receive#key=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  await page.goto("/?session=0123456789ab&portal=receive#key=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
 
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Send something to this device.");
   await expect(page.getByRole("button", { name: "Send files" })).toBeVisible();
   await expectNoPageOverflow(page);
   await expectNoSeriousAccessibilityViolations(page);
-  await expectKeyboardReachability(page, 4);
+  // All primary [data-action] buttons stay disabled (and out of tab order)
+  // until a real peer connects, which never happens in these single-page
+  // tests -- so only 3 controls are ever focusable here, not 4.
+  await expectKeyboardReachability(page, 3);
 });
 
 test("missing-session failure remains readable and safely disabled across browser engines", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 720 });
-  await page.goto("/?session=ABC123&portal=receive#key=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  await page.goto("/?session=0123456789ab&portal=receive#key=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
 
   await expect(page.getByText("Connection problem", { exact: true })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole("button", { name: "Send files" })).toBeDisabled();

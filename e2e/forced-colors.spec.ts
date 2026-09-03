@@ -74,17 +74,23 @@ test("host remains usable with forced colors enabled", async ({ page }) => {
   await expectVisibleBoundary(page.locator(".pair-card"), "Pairing card");
   await expectVisibleBoundary(page.locator("#drop-zone"), "Drop zone");
   await expectVisibleBoundary(page.locator(".connection"), "Connection status");
-  await expectForcedColorsKeyboardSurface(page, 4);
+  // All primary [data-action] buttons stay disabled (and out of tab order)
+  // until a real peer connects, which never happens in these single-page
+  // tests -- so only 3 controls are ever focusable here, not 4.
+  await expectForcedColorsKeyboardSurface(page, 3);
   await expectNoPageOverflow(page);
 });
 
 test("receive portal remains usable with forced colors enabled", async ({ page }) => {
-  await page.goto("/?session=ABC123&portal=receive#key=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  await page.goto("/?session=0123456789ab&portal=receive#key=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
 
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Send something to this device.");
   await expect(page.getByRole("button", { name: "Send files" })).toBeVisible();
   await expectVisibleBoundary(page.locator(".pair-card"), "Receive Portal card");
   await expectVisibleBoundary(page.locator("#drop-zone"), "Receive Portal drop zone");
-  await expectForcedColorsKeyboardSurface(page, 4);
+  // All primary [data-action] buttons stay disabled (and out of tab order)
+  // until a real peer connects, which never happens in these single-page
+  // tests -- so only 3 controls are ever focusable here, not 4.
+  await expectForcedColorsKeyboardSurface(page, 3);
   await expectNoPageOverflow(page);
 });
