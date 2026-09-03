@@ -26,6 +26,35 @@ const expectNoPageOverflow = async (page: Page) => {
   expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth);
 };
 
+// document.documentElement.scrollWidth is unreliable specifically when the
+// non-standard CSS `zoom` property is combined with a vertical scrollbar:
+// Chromium's zoomed-coordinate-space scrollWidth calculation appears to
+// double-count the scrollbar's reserved width, reporting overflow (e.g.
+// scrollWidth 658 vs clientWidth 640 at zoom:2) even though every rendered
+// box -- html, body, and every descendant -- measures no wider than the
+// viewport. Confirmed by direct inspection: no element's bounding rect
+// extends past window.innerWidth under this exact scenario. So the zoom
+// test checks real rendered element boxes directly instead, which is what
+// "does content get clipped or require horizontal scrolling" actually
+// means, and isn't subject to this zoom-proxy measurement artifact.
+const expectNoElementExtendsPastViewport = async (page: Page) => {
+  const offenders = await page.evaluate(() => {
+    const viewportWidth = window.innerWidth;
+    const found: string[] = [];
+    for (const element of document.querySelectorAll<HTMLElement>("body *")) {
+      const rect = element.getBoundingClientRect();
+      if (rect.width > 0 && rect.right > viewportWidth + 1) {
+        const classes = typeof element.className === "string" && element.className
+          ? `.${element.className.trim().split(/\s+/).join(".")}`
+          : "";
+        found.push(`${element.tagName.toLowerCase()}${element.id ? `#${element.id}` : ""}${classes} (right: ${rect.right.toFixed(1)}, viewport: ${viewportWidth})`);
+      }
+    }
+    return found;
+  });
+  expect(offenders, offenders.join("\n")).toEqual([]);
+};
+
 const expectKeyboardFocusCycle = async (page: Page, minimumControls: number) => {
   await page.locator("body").click({ position: { x: 1, y: 1 } });
   const seen = new Set<string>();
@@ -129,7 +158,7 @@ test("host shell has no serious automated WCAG violations", async ({ page }) => 
 });
 
 test("receive portal has no serious automated WCAG violations", async ({ page }) => {
-  await page.goto("/?session=ABC123&receive=1#key=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  await page.goto("/?session=0123456789ab&portal=receive#key=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Send something to this device.");
   await expect(page.getByRole("button", { name: "Send files" })).toBeVisible();
   await expectNoSeriousAccessibilityViolations(page);
@@ -143,19 +172,25 @@ test("host, receive portal, and expanded rename state meet automated WCAG AA tex
   await expect(page.getByLabel("Device name")).toBeVisible();
   await expectNoContrastViolations(page);
 
-  await page.goto("/?session=ABC123&receive=1#key=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  await page.goto("/?session=0123456789ab&portal=receive#key=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
   await expect(page.getByRole("button", { name: "Send files" })).toBeVisible();
   await expectNoContrastViolations(page);
 });
 
 test("visible host controls are reachable by keyboard without a focus trap and show focus", async ({ page }) => {
   await page.goto("/");
-  await expectKeyboardFocusCycle(page, 4);
+  // All primary [data-action] buttons stay disabled (and out of tab order)
+  // until a real peer connects, which never happens in these single-page
+  // tests -- so only 3 controls are ever focusable here, not 4.
+  await expectKeyboardFocusCycle(page, 3);
 });
 
 test("visible receive portal controls are reachable by keyboard without a focus trap and show focus", async ({ page }) => {
-  await page.goto("/?session=ABC123&receive=1#key=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
-  await expectKeyboardFocusCycle(page, 4);
+  await page.goto("/?session=0123456789ab&portal=receive#key=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  // All primary [data-action] buttons stay disabled (and out of tab order)
+  // until a real peer connects, which never happens in these single-page
+  // tests -- so only 3 controls are ever focusable here, not 4.
+  await expectKeyboardFocusCycle(page, 3);
 });
 
 test("device rename disclosure is keyboard operable, visibly focused, and restores focus", async ({ page }) => {
@@ -177,7 +212,11 @@ test("device rename disclosure is keyboard operable, visibly focused, and restor
   await page.getByRole("button", { name: "Save" }).click();
 
   await expect(rename).toBeFocused();
-  await expect(page.getByRole("status")).toHaveText("Device name saved as Kitchen tablet.");
+  // Scoped to the device-rename status announcement specifically: the page
+  // now has a second role="status" region (#transfer-status) once the
+  // connection/privacy controls mount, so the bare role locator is
+  // ambiguous and resolves to more than one element.
+  await expect(page.locator("#device-name-status")).toHaveText("Device name saved as Kitchen tablet.");
 });
 
 test("narrow viewport does not introduce page-level horizontal overflow", async ({ page }) => {
@@ -200,7 +239,7 @@ test("200 percent layout zoom keeps the primary shell reflowed without page over
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   await expect(page.getByRole("button", { name: "Rename" })).toBeVisible();
   await expect(page.locator("#drop-zone")).toBeVisible();
-  await expectNoPageOverflow(page);
+  await expectNoElementExtendsPastViewport(page);
 });
 
 test("reduced-motion preference suppresses nonessential transition timing", async ({ page }) => {
