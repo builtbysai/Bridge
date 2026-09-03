@@ -390,3 +390,140 @@ describe("signaling server integration - idle session expiry", () => {
     }
   }, 10_000);
 });
+
+// Session TTL renewal needs its own short-TTL server instance for the same
+// reason idle-session expiry above does: a short SESSION_TTL_MS is only
+// safe to race against in isolation.
+describe("signaling server integration - session TTL renewal", () => {
+  let renewalPort = 0;
+  let renewalChildProcess: ChildProcess | null = null;
+  let renewalSignalUrl = "";
+
+  beforeAll(async () => {
+    renewalPort = await reservePort();
+    renewalSignalUrl = `ws://127.0.0.1:${renewalPort}/signal`;
+    renewalChildProcess = spawn(process.execPath, ["--import", "tsx", "server/signaling.ts"], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        PORT: String(renewalPort),
+        SESSION_TTL_MS: "400",
+        SESSION_CLEANUP_INTERVAL_MS: "20",
+        SIGNAL_SHUTDOWN_GRACE_MS: "1000",
+        SIGNAL_ALLOWED_ORIGINS: TEST_ORIGIN,
+      },
+      stdio: "pipe"
+    });
+    await waitForHealth(renewalPort);
+  }, 10_000);
+
+  afterAll(() => {
+    renewalChildProcess?.kill("SIGTERM");
+  });
+
+  it("keeps a session alive past its base TTL while peers exchange signals, but still expires once activity stops", async () => {
+    const host = await connect(renewalSignalUrl);
+    const guest = await connect(renewalSignalUrl);
+    try {
+      const createdPromise = nextJson(host);
+      host.send(JSON.stringify({ type: "create-session", verifier: GOOD_VERIFIER }));
+      const created = await createdPromise;
+
+      const joinedPromise = nextJson(guest);
+      guest.send(JSON.stringify({
+        type: "join-session",
+        sessionId: created.sessionId,
+        verifier: GOOD_VERIFIER
+      }));
+      await expect(joinedPromise).resolves.toMatchObject({ type: "session-joined" });
+      await expect(nextJson(host)).resolves.toMatchObject({ type: "peer-joined" });
+
+      // Base TTL is 400ms. Relay a "signal" message roughly every 150ms for
+      // 900ms total -- well past the base TTL -- and confirm the session
+      // survives throughout because each relayed signal renews expiresAt.
+      const activityDeadline = Date.now() + 900;
+      let iteration = 0;
+      while (Date.now() < activityDeadline) {
+        iteration += 1;
+        const guestReceipt = nextJson(guest);
+        host.send(JSON.stringify({
+          type: "signal",
+          payload: { candidate: { candidate: `candidate:${iteration}` } }
+        }));
+        await expect(guestReceipt).resolves.toMatchObject({ type: "signal" });
+        await new Promise(resolve => setTimeout(resolve, 150));
+      }
+
+      // Now stop exchanging signals entirely. Renewal must not keep the
+      // session alive forever -- it should still expire shortly after.
+      await expect(nextJson(host, 5_000)).resolves.toMatchObject({
+        type: "session-closed",
+        reason: "expired",
+      });
+    } finally {
+      guest.close();
+      host.close();
+    }
+  }, 15_000);
+
+  it("still enforces a firm upper bound on total session lifetime under continuous signaling activity", async () => {
+    const host = await connect(renewalSignalUrl);
+    const guest = await connect(renewalSignalUrl);
+    try {
+      const createdPromise = nextJson(host);
+      host.send(JSON.stringify({ type: "create-session", verifier: GOOD_VERIFIER }));
+      const created = await createdPromise;
+
+      const joinedPromise = nextJson(guest);
+      guest.send(JSON.stringify({
+        type: "join-session",
+        sessionId: created.sessionId,
+        verifier: GOOD_VERIFIER
+      }));
+      await expect(joinedPromise).resolves.toMatchObject({ type: "session-joined" });
+      await expect(nextJson(host)).resolves.toMatchObject({ type: "peer-joined" });
+
+      // The server caps total renewed lifetime at a fixed multiple of the
+      // base TTL (6x here: 400ms * 6 = 2400ms from creation). Keep
+      // exchanging signals well past that cap and confirm the session is
+      // still force-expired around the cap rather than kept alive
+      // indefinitely by the continued activity. The pump runs concurrently
+      // with (not before) awaiting the close, and stops as soon as it sees
+      // one, so `resolvedAt` reflects when the server actually closed the
+      // session rather than just when this test got around to checking.
+      const start = Date.now();
+      let resolvedAt = 0;
+      const closedPromise = nextJson(host, 6_000).then(message => {
+        resolvedAt = Date.now();
+        return message;
+      });
+      let stopPumping = false;
+      let iteration = 0;
+      const pump = (async () => {
+        while (!stopPumping && Date.now() - start < 4_000) {
+          iteration += 1;
+          try {
+            host.send(JSON.stringify({
+              type: "signal",
+              payload: { candidate: { candidate: `candidate:${iteration}` } }
+            }));
+          } catch {
+            // The server may have already closed this socket once expired.
+          }
+          await new Promise(resolve => setTimeout(resolve, 150));
+        }
+      })();
+
+      await expect(closedPromise).resolves.toMatchObject({ type: "session-closed", reason: "expired" });
+      stopPumping = true;
+      await pump;
+
+      const elapsed = resolvedAt - start;
+      expect(elapsed).toBeGreaterThanOrEqual(2_200);
+      expect(elapsed).toBeLessThan(3_200);
+    } finally {
+      guest.close();
+      host.close();
+    }
+  }, 15_000);
+});
