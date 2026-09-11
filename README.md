@@ -40,3 +40,7 @@ Bridge CI and Bridge Deploy are currently manual-only to avoid noisy GitHub Acti
 ## Repository history
 
 Bridge was extracted from the Creative-Experiments monorepo, where it previously lived under `bridge/` alongside sibling projects (`colortrace/`, `extensible-terminal/`). This repository now contains only Bridge; the workflows remain at `.github/workflows/bridge.yml` and `.github/workflows/bridge-deploy.yml`, and `scripts/verify-isolation.mjs` is kept as a canary (see the comment in that file) rather than removed.
+
+---
+
+*Built by [Hans Sai](https://builtbysai.com).*
