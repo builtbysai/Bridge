@@ -2,6 +2,13 @@
 
 A temporary browser-to-browser device bridge for moving files, text, links, and clipboard snippets without accounts or permanent cloud storage.
 
+<p align="center">
+  <img src="assets/webrtc-flow.svg" width="900" alt="Diagram: WebRTC transfer flow — QR pairing, ephemeral WebSocket signaling, then an end-to-end encrypted DataChannel">
+</p>
+<p align="center">
+  <img src="assets/session-modes.svg" width="900" alt="Bridge session modes: Send, Request, and Receive — session-first, not cloud-first">
+</p>
+
 ## Product thesis
 
 **Connect two devices for a moment. Move whatever you need.**

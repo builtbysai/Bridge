@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="640" viewBox="0 0 1000 640" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace">
+<defs><pattern id="bsl1" width="4" height="4" patternUnits="userSpaceOnUse"><rect width="4" height="1" fill="#ffffff" opacity="0.018"/></pattern></defs>
+<rect x="1" y="1" width="998" height="638" rx="14" fill="#070b08" stroke="#1d3a26" stroke-width="2"/>
+<rect x="1" y="1" width="998" height="638" rx="14" fill="url(#bsl1)"/>
+<text x="36" y="40" fill="#e8f5ec" font-size="17" font-weight="bold">Bridge — how a transfer moves</text>
+<text x="36" y="60" fill="#8fa89a" font-size="12">signaling is temporary · the transfer itself is end-to-end encrypted</text>
+
+<g>
+<rect x="35.0" y="104" width="190" height="92" rx="12" fill="#0a100c" stroke="#1d3a26" stroke-width="1.5"/>
+<rect x="53.0" y="110" width="154" height="30" rx="4" fill="none" stroke="#33ff66" stroke-width="1.2" opacity="0.7"/>
+<text x="130" y="158" text-anchor="middle" fill="#e8f5ec" font-size="13.5" font-weight="bold">Device A</text>
+<text x="130" y="178" text-anchor="middle" fill="#8fa89a" font-size="11">browser · sender</text>
+</g>
+
+<g>
+<rect x="775.0" y="104" width="190" height="92" rx="12" fill="#0a100c" stroke="#1d3a26" stroke-width="1.5"/>
+<rect x="793.0" y="110" width="154" height="30" rx="4" fill="none" stroke="#33ff66" stroke-width="1.2" opacity="0.7"/>
+<text x="870" y="158" text-anchor="middle" fill="#e8f5ec" font-size="13.5" font-weight="bold">Device B</text>
+<text x="870" y="178" text-anchor="middle" fill="#8fa89a" font-size="11">browser · receiver</text>
+</g>
+
+<g>
+<rect x="405.0" y="104" width="190" height="92" rx="12" fill="#0a100c" stroke="#1d3a26" stroke-width="1.5"/>
+<rect x="423.0" y="110" width="154" height="30" rx="4" fill="none" stroke="#33ff66" stroke-width="1.2" opacity="0.7"/>
+<text x="500" y="158" text-anchor="middle" fill="#e8f5ec" font-size="13.5" font-weight="bold">Signaling</text>
+<text x="500" y="178" text-anchor="middle" fill="#8fa89a" font-size="11">ephemeral WebSocket rendezvous</text>
+</g>
+<line x1="225" y1="130" x2="405" y2="130" stroke="#8fa89a" stroke-width="1.5" stroke-dasharray="7 5"/>
+<line x1="595" y1="130" x2="775" y2="130" stroke="#8fa89a" stroke-width="1.5" stroke-dasharray="7 5"/>
+<text x="315" y="118" text-anchor="middle" fill="#8fa89a" font-size="11">pairing handshake</text>
+<text x="685" y="118" text-anchor="middle" fill="#8fa89a" font-size="11">offer / answer / ICE</text>
+<path d="M 190 268 Q 500 318 810 268" fill="none" stroke="#33ff66" stroke-width="2.5"/>
+<path d="M 810 268 l -14 -2 l 4 14 z" fill="#33ff66"/>
+<path d="M 190 268 l 14 -2 l -4 14 z" fill="#33ff66"/>
+<text x="500" y="336" text-anchor="middle" fill="#33ff66" font-size="12.5" font-weight="bold">WebRTC DataChannel — direct, end-to-end encrypted</text>
+<text x="500" y="356" text-anchor="middle" fill="#8fa89a" font-size="11">HKDF-derived AES-256-GCM keys · full-payload SHA-256 verification</text>
+<text x="36" y="392" fill="#8fa89a" font-size="11">STUN for NAT traversal · TURN fallback</text>
+<text x="36" y="410" fill="#8fa89a" font-size="11">optional relay-only privacy mode</text>
+
+<g>
+<rect x="36" y="452" width="217" height="104" rx="10" fill="#0a100c" stroke="#1d3a26" stroke-width="1.2"/>
+<circle cx="66" cy="480" r="13" fill="none" stroke="#33ff66" stroke-width="1.6"/>
+<text x="66" y="485" text-anchor="middle" fill="#33ff66" font-size="13" font-weight="bold">1</text>
+<text x="88" y="485" fill="#e8f5ec" font-size="13" font-weight="bold">Scan QR</text>
+<text x="50" y="506" fill="#8fa89a" font-size="10.5">256-bit secret pairs the</text><text x="50" y="522" fill="#8fa89a" font-size="10.5">two browsers</text>
+</g>
+<g>
+<rect x="273" y="452" width="217" height="104" rx="10" fill="#0a100c" stroke="#1d3a26" stroke-width="1.2"/>
+<circle cx="303" cy="480" r="13" fill="none" stroke="#33ff66" stroke-width="1.6"/>
+<text x="303" y="485" text-anchor="middle" fill="#33ff66" font-size="13" font-weight="bold">2</text>
+<text x="325" y="485" fill="#e8f5ec" font-size="13" font-weight="bold">Signal</text>
+<text x="287" y="506" fill="#8fa89a" font-size="10.5">ephemeral WebSocket</text><text x="287" y="522" fill="#8fa89a" font-size="10.5">rendezvous, no payload</text><text x="287" y="538" fill="#8fa89a" font-size="10.5">storage</text>
+</g>
+<g>
+<rect x="510" y="452" width="217" height="104" rx="10" fill="#0a100c" stroke="#1d3a26" stroke-width="1.2"/>
+<circle cx="540" cy="480" r="13" fill="none" stroke="#33ff66" stroke-width="1.6"/>
+<text x="540" y="485" text-anchor="middle" fill="#33ff66" font-size="13" font-weight="bold">3</text>
+<text x="562" y="485" fill="#e8f5ec" font-size="13" font-weight="bold">Confirm keys</text>
+<text x="524" y="506" fill="#8fa89a" font-size="10.5">app-level key confirmation</text><text x="524" y="522" fill="#8fa89a" font-size="10.5">before anything moves</text>
+</g>
+<g>
+<rect x="747" y="452" width="217" height="104" rx="10" fill="#0a100c" stroke="#1d3a26" stroke-width="1.2"/>
+<circle cx="777" cy="480" r="13" fill="none" stroke="#33ff66" stroke-width="1.6"/>
+<text x="777" y="485" text-anchor="middle" fill="#33ff66" font-size="13" font-weight="bold">4</text>
+<text x="799" y="485" fill="#e8f5ec" font-size="13" font-weight="bold">Transfer</text>
+<text x="761" y="506" fill="#8fa89a" font-size="10.5">chunked streaming ·</text><text x="761" y="522" fill="#8fa89a" font-size="10.5">backpressure · SHA-256</text><text x="761" y="538" fill="#8fa89a" font-size="10.5">verified · resume</text>
+</g>
+<text x="36" y="614" fill="#ffb020" font-size="11.5">production-oriented beta — not yet a production-approved deployment</text>
+<text x="964" y="614" text-anchor="end" fill="#4a5f52" font-size="11.5">TypeScript + Vite PWA · no accounts · no cloud storage</text>
+</svg>
