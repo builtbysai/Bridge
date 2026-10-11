@@ -79,6 +79,12 @@ app.innerHTML = `
       <p class="lede">${isReceivePortal ? "Choose what you want to send. It travels over the temporary encrypted peer connection and this portal expires with the session." : "No account. No permanent cloud drive. Pair two browsers, transfer what you need, disconnect."}</p>
     </section>
 
+    <section class="link-diagram" id="link-diagram" data-state="idle" aria-hidden="true">
+      <span class="node">This browser</span>
+      <span class="tunnel"><i></i></span>
+      <span class="node node-peer">Paired device</span>
+    </section>
+
     <section class="pair-card ${isReceivePortal ? "portal-card" : ""}">
       <div class="pair-info">
         <p class="label" id="pair-label">${isReceivePortal ? "Sending to paired device" : isGuest ? "Joining device" : "Connect another device"}</p>
@@ -161,6 +167,8 @@ const code = document.querySelector<HTMLElement>("#session-code");
 const detail = document.querySelector<HTMLElement>("#session-detail");
 const title = document.querySelector<HTMLElement>("#connection-title");
 const connectionDetail = document.querySelector<HTMLElement>("#connection-detail");
+const connectionDot = document.querySelector<HTMLElement>("#connection-dot");
+const linkDiagram = document.querySelector<HTMLElement>("#link-diagram");
 const routePill = document.querySelector<HTMLElement>("#route-pill");
 const transferPanel = document.querySelector<HTMLElement>("#transfer-panel");
 const transferTitle = document.querySelector<HTMLElement>("#transfer-title");
@@ -298,7 +306,7 @@ const setState = (state: BridgeSessionState, message?: string) => {
     idle: ["Ready", "Waiting to start."],
     signaling: ["Connecting to signaling…", "Establishing the temporary rendezvous channel."],
     waiting: ["Waiting for another device", "Scan the QR code on the device you want to connect."],
-    connecting: ["Device found — connecting", "Negotiating the best WebRTC route."],
+    connecting: ["Device found, connecting", "Negotiating the best WebRTC route."],
     connected: [isReceivePortal ? "Ready to send" : "Device connected", isReceivePortal ? "Choose a file, text, link, or clipboard content to send." : "The encrypted transfer channel is ready."],
     closed: ["Session closed", message ?? "This temporary session has ended."],
     error: ["Connection problem", message ?? "Unable to establish the session."]
@@ -306,6 +314,8 @@ const setState = (state: BridgeSessionState, message?: string) => {
   const [heading, subheading] = labels[state];
   title.textContent = heading;
   connectionDetail.textContent = subheading;
+  if (connectionDot) connectionDot.dataset.state = state;
+  if (linkDiagram) linkDiagram.dataset.state = state;
   for (const button of buttons) button.disabled = state !== "connected";
   if (dropZone) dropZone.setAttribute("aria-disabled", String(state !== "connected"));
 };
@@ -314,10 +324,10 @@ const setRoute = (route: ConnectionRoute) => {
   if (!routePill) return;
   if (route === "direct") {
     routePill.hidden = false;
-    routePill.textContent = "⚡ Direct";
+    routePill.textContent = "Direct";
   } else if (route === "relayed") {
     routePill.hidden = false;
-    routePill.textContent = "↪ Relayed";
+    routePill.textContent = "Relayed";
   } else {
     routePill.hidden = true;
   }
