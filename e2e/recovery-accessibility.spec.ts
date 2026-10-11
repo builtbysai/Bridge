@@ -84,7 +84,7 @@ test("recovers from an authenticated data-channel interruption and restores usab
       channel.close();
     });
 
-    await expect(host.locator("#connection-title")).toHaveText("Device found — connecting", { timeout: 10_000 });
+    await expect(host.locator("#connection-title")).toHaveText("Device found, connecting", { timeout: 10_000 });
     await expect(host.locator("#connection-detail")).toContainText(/recovery|negotiating/i);
 
     await expect(host.locator("#connection-title")).toHaveText("Device connected", { timeout: 20_000 });

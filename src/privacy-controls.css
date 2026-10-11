@@ -81,8 +81,8 @@
 }
 
 .privacy-control-actions button:first-child {
-  border-color: #4777b9;
-  background: linear-gradient(180deg, #224d82, #173961);
+  border-color: #3f6ea8;
+  background: #1d4e89;
 }
 
 .privacy-control-actions button:hover:not(:disabled) {
@@ -92,8 +92,8 @@
 }
 
 .privacy-control-actions button:first-child:hover:not(:disabled) {
-  border-color: #6495d2;
-  background: linear-gradient(180deg, #285c99, #1b4777);
+  border-color: #4f80bd;
+  background: #2560a8;
 }
 
 .privacy-control-actions button:disabled {
