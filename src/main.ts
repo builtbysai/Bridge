@@ -67,113 +67,107 @@ const primaryActions = isReceivePortal
     `;
 
 app.innerHTML = `
-  <main class="shell ${isReceivePortal ? "portal-shell" : ""}">
-    <header>
-      <div class="brand">Bridge</div>
-      <div class="pill">alpha</div>
-    </header>
+  <div class="stage">
+    <div class="masthead">
+      <span class="wordmark">Bridge <span class="alpha">alpha</span></span>
+      <span class="sesscode" id="sesscode" hidden></span>
+      <span class="lamp" id="lamp" data-state="idle" aria-hidden="true"></span>
+    </div>
 
-    <section class="hero ${isReceivePortal ? "portal-hero" : ""}">
-      <p class="eyebrow">${isReceivePortal ? "Receive" : "Send between devices"}</p>
-      <h1>${isReceivePortal ? "Send something to this device." : "Move something between devices."}</h1>
-      <p class="lede">${isReceivePortal ? "Pick what to send. Nothing is stored, and this page stops working when the session ends." : "No account. No permanent cloud drive. Pair two browsers, transfer what you need, disconnect."}</p>
-    </section>
-
-    <section class="link-diagram" id="link-diagram" data-state="idle" aria-hidden="true">
-      <span class="node">This browser</span>
-      <span class="tunnel"><i></i></span>
-      <span class="node node-peer">Paired device</span>
-    </section>
-
-    <section class="pair-card ${isReceivePortal ? "portal-card" : ""}">
-      <div class="pair-info">
-        <p class="label" id="pair-label">${isReceivePortal ? "Sending to paired device" : isGuest ? "Joining\u2026" : "Scan to connect"}</p>
-        <div class="qr-wrap" id="qr-wrap" ${isGuest || pairingError ? "hidden" : ""}><canvas id="qr"></canvas></div>
-        <p class="code" id="session-code">${pairingError ? "Invalid pairing link" : isGuest ? `Session <strong>${joiningSession?.toUpperCase()}</strong>` : "Creating session…"}</p>
-        <p class="fine" id="session-detail">${pairingError ? pairingError : isReceivePortal ? "This page only sends. It can't see the other device's files." : isGuest ? "" : ""}</p>
+    <div class="stagebody" id="stagebody">
+      <div id="invite-block">
+        <div class="qr" id="qr-wrap"><canvas id="qr" width="232" height="232"></canvas></div>
+        <p class="ask" id="ask">Scan with your other device.</p>
+        <p class="code" id="session-code">SESSION <strong>&middot;&middot;&middot;&middot;</strong></p>
       </div>
-      <div class="actions ${isReceivePortal ? "portal-actions" : ""}">
-        ${primaryActions}
-        <input id="file-input" type="file" hidden multiple />
-      </div>
-    </section>
-
-    <section class="drop-zone" id="drop-zone" tabindex="0" role="button" aria-label="Choose files or drop files here" aria-disabled="true">
-      <strong>Drop files here</strong>
-      <small>or press Enter to choose files</small>
-    </section>
-
-    <section class="queue-panel" id="queue-panel" hidden aria-live="polite">
-      <div class="queue-header">
-        <div>
-          <strong>Transfer queue</strong>
-          <small id="queue-summary"></small>
+      <div id="link-block" hidden>
+        <p class="peerline">THIS DEVICE <strong>&larr;&rarr;</strong> PAIRED DEVICE</p>
+        <p class="route" id="route-line">ENCRYPTED</p>
+        ${isReceivePortal ? '<p class="portal-note">THIS PAGE ONLY SENDS</p>' : ''}
+        <button class="drop" id="drop-zone" aria-disabled="true">
+          <span>Drop files here<small>OR TAP TO CHOOSE</small></span>
+        </button>
+        <div class="actions">
+          ${primaryActions}
+          <input id="file-input" type="file" hidden multiple />
         </div>
-        <button id="queue-clear" class="secondary compact" type="button">Clear finished</button>
       </div>
-      <div class="queue-list" id="queue-list"></div>
+      <div id="note-block" hidden>
+        <p class="ask" id="note-title">Ready</p>
+        <p class="route" id="note-detail">WAITING TO START</p>
+        <div class="actions" id="note-actions" hidden style="max-width:280px">
+          <button id="note-retry">Start a new session</button>
+        </div>
+      </div>
+    </div>
+
+    <section class="panel" id="transfer-panel" hidden aria-live="polite">
+      <p class="xfer" id="transfer-title">Transfer</p>
+      <p class="detail" id="transfer-detail"></p>
+      <div class="xferbar"><i id="xferbar-fill"></i></div>
     </section>
 
-    <section class="connection">
-      <span class="dot" id="connection-dot"></span>
-      <div>
-        <strong id="connection-title">Connecting…</strong>
-        <small id="connection-detail">Setting up.</small>
-      </div>
-      <span class="route-pill" id="route-pill" hidden></span>
+    <section class="panel" id="queue-panel" hidden aria-live="polite">
+      <h2>Queue <span class="detail" id="queue-summary"></span></h2>
+      <div class="qlist" id="queue-list"></div>
+      <div class="row"><button id="queue-clear" type="button">Clear finished</button></div>
     </section>
 
-    <section class="request-panel" id="incoming-panel" hidden aria-live="assertive">
-      <div>
-        <strong id="incoming-title">Incoming transfer</strong>
-        <small id="incoming-detail"></small>
-      </div>
-      <div class="request-actions">
-        <button id="incoming-save">Save to disk</button>
-        <button id="incoming-memory" class="secondary">Receive in browser</button>
-        <button id="incoming-reject" class="secondary">Decline</button>
-      </div>
-    </section>
-
-    <section class="request-panel" id="request-panel" hidden aria-live="polite">
-      <div>
-        <strong id="request-title">Incoming request</strong>
-        <small id="request-detail"></small>
-      </div>
-      <div class="request-actions">
-        <button id="request-fulfill">Choose</button>
-        <button id="request-decline" class="secondary">Decline</button>
+    <section class="panel" id="incoming-panel" hidden aria-live="assertive">
+      <h2 id="incoming-title">Incoming transfer</h2>
+      <p class="detail" id="incoming-detail"></p>
+      <div class="row">
+        <button id="incoming-save" class="primary">Save to disk</button>
+        <button id="incoming-memory">Receive in browser</button>
+        <button id="incoming-reject" class="danger">Decline</button>
       </div>
     </section>
 
-    <section class="transfer-panel" id="transfer-panel" hidden aria-live="polite">
-      <div>
-        <strong id="transfer-title">Transfer</strong>
-        <small id="transfer-detail"></small>
+    <section class="panel" id="request-panel" hidden aria-live="polite">
+      <h2 id="request-title">Incoming request</h2>
+      <p class="detail" id="request-detail"></p>
+      <div class="row">
+        <button id="request-fulfill" class="primary">Choose</button>
+        <button id="request-decline">Decline</button>
       </div>
-      <progress id="transfer-progress" max="100" value="0"></progress>
     </section>
 
-    <section class="received-panel" id="received-panel" hidden aria-live="polite">
-      <strong id="received-title">Received</strong>
+    <section class="panel" id="received-panel" hidden aria-live="polite">
+      <h2 id="received-title">Received</h2>
       <pre id="received-content"></pre>
-      <button id="received-copy">Copy</button>
+      <div class="row"><button id="received-copy">Copy</button></div>
     </section>
-  </main>
+
+    <div class="statusline">
+      <span><span class="st" id="st" data-state="idle">READY</span> &middot; <span id="st-sub">WAITING TO START</span></span>
+      <span id="st-exp"></span>
+    </div>
+  </div>
 `;
 
 const canvas = document.querySelector<HTMLCanvasElement>("#qr");
 const code = document.querySelector<HTMLElement>("#session-code");
-const detail = document.querySelector<HTMLElement>("#session-detail");
-const title = document.querySelector<HTMLElement>("#connection-title");
-const connectionDetail = document.querySelector<HTMLElement>("#connection-detail");
-const connectionDot = document.querySelector<HTMLElement>("#connection-dot");
-const linkDiagram = document.querySelector<HTMLElement>("#link-diagram");
-const routePill = document.querySelector<HTMLElement>("#route-pill");
+const sesscode = document.querySelector<HTMLElement>("#sesscode");
+const stExp = document.querySelector<HTMLElement>("#st-exp");
+const stagebody = document.querySelector<HTMLElement>("#stagebody");
+const inviteBlock = document.querySelector<HTMLElement>("#invite-block");
+const linkBlock = document.querySelector<HTMLElement>("#link-block");
+const noteBlock = document.querySelector<HTMLElement>("#note-block");
+const noteTitle = document.querySelector<HTMLElement>("#note-title");
+const noteDetail = document.querySelector<HTMLElement>("#note-detail");
+const askEl = document.querySelector<HTMLElement>("#ask");
+const qrWrap = document.querySelector<HTMLElement>("#qr-wrap");
+const noteActions = document.querySelector<HTMLElement>("#note-actions");
+const noteRetry = document.querySelector<HTMLButtonElement>("#note-retry");
+noteRetry?.addEventListener("click", () => window.location.reload());
+const stWord = document.querySelector<HTMLElement>("#st");
+const stSub = document.querySelector<HTMLElement>("#st-sub");
+const lamp = document.querySelector<HTMLElement>("#lamp");
+const routeLine = document.querySelector<HTMLElement>("#route-line");
 const transferPanel = document.querySelector<HTMLElement>("#transfer-panel");
 const transferTitle = document.querySelector<HTMLElement>("#transfer-title");
 const transferDetail = document.querySelector<HTMLElement>("#transfer-detail");
-const transferProgress = document.querySelector<HTMLProgressElement>("#transfer-progress");
+const xferFill = document.querySelector<HTMLElement>("#xferbar-fill");
 const incomingPanel = document.querySelector<HTMLElement>("#incoming-panel");
 const incomingTitle = document.querySelector<HTMLElement>("#incoming-title");
 const incomingDetail = document.querySelector<HTMLElement>("#incoming-detail");
@@ -196,6 +190,11 @@ const queueList = document.querySelector<HTMLElement>("#queue-list");
 const queueSummary = document.querySelector<HTMLElement>("#queue-summary");
 const queueClear = document.querySelector<HTMLButtonElement>("#queue-clear");
 const buttons = [...document.querySelectorAll<HTMLButtonElement>("[data-action]")];
+
+// guest joining: no QR to show — the code is the invitation
+if ((isGuest || pairingError) && qrWrap) qrWrap.hidden = true;
+if (isGuest && askEl) askEl.textContent = "Joining session.";
+if (isReceivePortal && askEl) askEl.textContent = "Send something to this device.";
 
 if (incomingSave && !FileSystemReceiveSink.isSupported()) incomingSave.hidden = true;
 
@@ -247,25 +246,21 @@ const renderQueue = (snapshot: TransferQueueSnapshot) => {
   if (!queuePanel || !queueList || !queueSummary) return;
   queuePanel.hidden = snapshot.items.length === 0;
   queueSummary.textContent = snapshot.pendingCount > 0
-    ? `${snapshot.pendingCount} remaining · files send one at a time`
-    : "Queue complete";
+    ? `\u00b7 ${snapshot.pendingCount} REMAINING`
+    : "\u00b7 COMPLETE";
   queueList.innerHTML = snapshot.items.map(item => {
-    const percentage = item.progress.total === 0 ? 100 : Math.min(100, (item.progress.transferred / item.progress.total) * 100);
     const canCancel = item.status === "queued" || item.status === "sending";
     const detailText = item.status === "failed"
       ? item.error ?? "Transfer failed"
       : item.status === "sending"
-        ? `${formatBytes(item.progress.transferred)} / ${formatBytes(item.progress.total)} · ${formatBytes(item.progress.bytesPerSecond)}/s`
+        ? `${formatBytes(item.progress.transferred)} / ${formatBytes(item.progress.total)} \u00b7 ${formatBytes(item.progress.bytesPerSecond)}/s`
         : formatBytes(item.file.size);
     return `
-      <article class="queue-item" data-queue-id="${item.id}" data-status="${item.status}">
-        <div class="queue-item-copy">
-          <strong title="${escapeHtml(item.file.name)}">${escapeHtml(item.file.name)}</strong>
-          <small>${queueStatusLabel(item.status)} · ${escapeHtml(detailText)}</small>
-          <progress max="100" value="${percentage}" ${item.status === "queued" ? "hidden" : ""}></progress>
-        </div>
-        ${canCancel ? `<button class="secondary compact" type="button" data-queue-cancel="${item.id}">${item.status === "sending" ? "Cancel" : "Remove"}</button>` : ""}
-      </article>
+      <div class="qrow" data-queue-id="${item.id}" data-status="${item.status}">
+        <span class="nm" title="${escapeHtml(item.file.name)}">${escapeHtml(item.file.name)}</span>
+        <span class="st2">${queueStatusLabel(item.status).toUpperCase()} \u00b7 ${escapeHtml(detailText)}</span>
+        ${canCancel ? `<button type="button" data-queue-cancel="${item.id}">${item.status === "sending" ? "CANCEL" : "REMOVE"}</button>` : ""}
+      </div>
     `;
   }).join("");
 };
@@ -294,6 +289,14 @@ const resetTransferState = (reason: string) => {
   if (requestPanel) requestPanel.hidden = true;
 };
 
+const showBlock = (id: "invite-block" | "link-block" | "note-block") => {
+  if (inviteBlock) inviteBlock.hidden = id !== "invite-block";
+  if (linkBlock) linkBlock.hidden = id !== "link-block";
+  if (noteBlock) noteBlock.hidden = id !== "note-block";
+  if (stagebody) stagebody.classList.toggle("left", id === "link-block");
+  if (sesscode) sesscode.hidden = id === "invite-block";
+};
+
 const setState = (state: BridgeSessionState, message?: string) => {
   const previous = sessionState;
   sessionState = state;
@@ -301,44 +304,41 @@ const setState = (state: BridgeSessionState, message?: string) => {
     resetTransferState(message ?? `Bridge session ${state}`);
   }
 
-  if (!title || !connectionDetail) return;
-  const labels: Record<BridgeSessionState, [string, string]> = {
-    idle: ["Ready", "Waiting to start."],
-    signaling: ["Connecting…", "Setting up the encrypted link."],
-    waking: ["Waking up…", "Retrying automatically."],
-    waiting: ["Waiting for another device", "Scan the QR code on the device you want to connect."],
-    connecting: ["Device found", "Connecting\u2026"],
-    connected: [isReceivePortal ? "Ready to send" : "Connected", isReceivePortal ? "Choose what to send." : "Pick something to send."],
-    closed: ["Session ended", message ?? ""],
-    error: ["Couldn't connect", message ?? "Check your connection and try again."]
+  if (!stWord || !stSub) return;
+  const labels: Record<BridgeSessionState, [block: string, word: string, sub: string, note?: string, noteSub?: string]> = {
+    idle: ["note-block", "READY", "WAITING TO START", "Ready", "WAITING TO START"],
+    signaling: ["note-block", "CONNECTING", "SETTING UP THE ENCRYPTED LINK", "Connecting\u2026", "SETTING UP THE ENCRYPTED LINK"],
+    waking: ["note-block", "WAKING", "RETRYING AUTOMATICALLY", "Waking up\u2026", "RETRYING AUTOMATICALLY"],
+    waiting: ["invite-block", "WAITING", "LINK OPEN"],
+    connecting: ["note-block", "CONNECTING", "PEER FOUND", "Device found", "CONNECTING\u2026"],
+    connected: ["link-block", "LIVE", "2 PEERS"],
+    closed: ["note-block", "ENDED", "NOTHING REMAINS", "Session ended.", "NOTHING REMAINS"],
+    error: ["note-block", "FAILED", "CONNECTION FAILED", message ?? "Couldn't connect", "CHECK YOUR CONNECTION AND TRY AGAIN"]
   };
-  const [heading, subheading] = labels[state];
-  title.textContent = heading;
-  connectionDetail.textContent = subheading;
-  if (connectionDot) connectionDot.dataset.state = state;
-  if (linkDiagram) linkDiagram.dataset.state = state;
+  const [block, word, sub, note, noteSub] = labels[state];
+  showBlock(block as "invite-block" | "link-block" | "note-block");
+  stWord.textContent = word;
+  stWord.dataset.state = state;
+  stSub.textContent = sub;
+  if (lamp) lamp.dataset.state = state;
+  if (noteTitle && note !== undefined) noteTitle.textContent = note;
+  if (noteDetail && noteSub !== undefined) noteDetail.textContent = noteSub;
+  if (noteActions) noteActions.hidden = state !== "closed" && state !== "error";
   for (const button of buttons) button.disabled = state !== "connected";
   if (dropZone) dropZone.setAttribute("aria-disabled", String(state !== "connected"));
 };
 
 const setRoute = (route: ConnectionRoute) => {
-  if (!routePill) return;
-  if (route === "direct") {
-    routePill.hidden = false;
-    routePill.textContent = "Direct";
-  } else if (route === "relayed") {
-    routePill.hidden = false;
-    routePill.textContent = "Relayed";
-  } else {
-    routePill.hidden = true;
-  }
+  if (!routeLine) return;
+  routeLine.textContent = route === "direct" ? "DIRECT \u00b7 ENCRYPTED"
+    : route === "relayed" ? "RELAYED \u00b7 ENCRYPTED" : "ENCRYPTED";
 };
 
 const showProgress = (name: string, transferred: number, total: number, bytesPerSecond: number) => {
-  if (!transferPanel || !transferTitle || !transferDetail || !transferProgress) return;
+  if (!transferPanel || !transferTitle || !transferDetail || !xferFill) return;
   transferPanel.hidden = false;
   transferTitle.textContent = name;
-  transferProgress.value = total === 0 ? 100 : Math.min(100, (transferred / total) * 100);
+  xferFill.style.width = `${total === 0 ? 100 : Math.min(100, (transferred / total) * 100)}%`;
   transferDetail.textContent = `${formatBytes(transferred)} / ${formatBytes(total)} · ${formatBytes(bytesPerSecond)}/s`;
 };
 
@@ -551,18 +551,20 @@ const bridge = new BridgeSession(undefined, {
   onSession: (sessionId, expiresAt) => {
     keyPromise = deriveSessionKey(sessionSecret, sessionId);
     void attachTransferEngine().catch(error => setState("error", error instanceof Error ? error.message : "Unable to initialize transfer encryption"));
-    if (code) code.innerHTML = `Session <strong>${sessionId.toUpperCase()}</strong>`;
-    if (detail && !isReceivePortal) detail.textContent = `Expires ${new Date(expiresAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.`;
+    if (code) code.innerHTML = `SESSION <strong>${sessionId.toUpperCase()}</strong>`;
+    if (sesscode) { sesscode.textContent = sessionId.toUpperCase(); sesscode.hidden = false; }
+    if (stExp) stExp.textContent = `EXPIRES ${new Date(expiresAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toUpperCase()}`;
     if (!isGuest && canvas) {
       pairingUrl = new URL(window.location.href);
       pairingUrl.search = "";
       pairingUrl.hash = "";
       pairingUrl.searchParams.set("session", sessionId);
       pairingUrl.hash = `key=${sessionSecret}`;
-      void QRCode.toCanvas(canvas, pairingUrl.toString(), { width: 210, margin: 1, color: { dark: "#07101f", light: "#f7fbff" } })
+      void QRCode.toCanvas(canvas, pairingUrl.toString(), { width: 264, margin: 1, color: { dark: "#07101f", light: "#f7fbff" } })
         .catch(error => {
           console.error("Unable to render Bridge pairing QR", error);
-          if (detail) detail.textContent = "The session is ready, but the pairing QR could not be rendered. Reload or use the Receive Portal link after connecting.";
+          if (noteTitle) { showBlock("note-block"); noteTitle.textContent = "Session ready, but the QR could not be rendered."; }
+          if (noteDetail) noteDetail.textContent = "RELOAD OR USE THE RECEIVE LINK AFTER CONNECTING";
         });
     }
   }
