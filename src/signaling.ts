@@ -22,11 +22,15 @@ export type SignalingEvent =
   | { type: "signal"; payload: SignalPayload }
   | { type: "session-closed"; reason: string }
   | { type: "socket-closed"; code: number; reason: string }
+  | { type: "connect-retry"; attempt: number }
   | { type: "error"; code: string };
 
 type Listener = (event: SignalingEvent) => void;
 
 const CONNECT_TIMEOUT_MS = 10_000;
+const CONNECT_MAX_ATTEMPTS = 5;
+const CONNECT_RETRY_BASE_MS = 1_000;
+const CONNECT_RETRY_MAX_MS = 8_000;
 const SESSION_ID_PATTERN = /^[a-f0-9]{12}$/;
 const MAX_SERVER_TEXT_LENGTH = 512;
 const MAX_SDP_LENGTH = 2 * 1024 * 1024;
@@ -148,6 +152,7 @@ export class SignalingClient {
   private readonly listeners = new Set<Listener>();
   private connectPromise: Promise<void> | null = null;
   private intentionalDisconnect = false;
+  private retryWake: (() => void) | null = null;
 
   constructor(private readonly url: string) {}
 
@@ -156,7 +161,53 @@ export class SignalingClient {
     if (this.connectPromise) return this.connectPromise;
 
     this.intentionalDisconnect = false;
-    this.connectPromise = new Promise<void>((resolve, reject) => {
+    this.connectPromise = this.connectWithRetry().finally(() => {
+      this.connectPromise = null;
+    });
+
+    return this.connectPromise;
+  }
+
+  /**
+   * The signaling service may need a moment to answer (cold edge, brief
+   * network loss). Retry with exponential backoff instead of failing the
+   * session on the first attempt, and emit connect-retry so the UI can
+   * show a "waking" state rather than an error.
+   */
+  private async connectWithRetry(): Promise<void> {
+    let attempt = 0;
+    for (;;) {
+      attempt += 1;
+      try {
+        await this.connectOnce();
+        return;
+      } catch (error) {
+        if (this.intentionalDisconnect) throw error;
+        if (attempt >= CONNECT_MAX_ATTEMPTS) throw error;
+        this.emit({ type: "connect-retry", attempt });
+        const delay = Math.min(CONNECT_RETRY_BASE_MS * 2 ** (attempt - 1), CONNECT_RETRY_MAX_MS);
+        await this.delayInterruptible(delay);
+        if (this.intentionalDisconnect) throw new Error("Signaling connection cancelled");
+      }
+    }
+  }
+
+  private delayInterruptible(ms: number): Promise<void> {
+    return new Promise<void>(resolve => {
+      const timer = window.setTimeout(() => {
+        this.retryWake = null;
+        resolve();
+      }, ms);
+      this.retryWake = () => {
+        window.clearTimeout(timer);
+        this.retryWake = null;
+        resolve();
+      };
+    });
+  }
+
+  private connectOnce(): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
       const socket = new WebSocket(this.url);
       this.socket = socket;
       let opened = false;
@@ -212,11 +263,7 @@ export class SignalingClient {
           this.emit({ type: "socket-closed", code: event.code, reason: event.reason || "Signaling connection closed" });
         }
       });
-    }).finally(() => {
-      this.connectPromise = null;
     });
-
-    return this.connectPromise;
   }
 
   subscribe(listener: Listener): () => void {
@@ -246,6 +293,7 @@ export class SignalingClient {
 
   disconnect(): void {
     this.intentionalDisconnect = true;
+    this.retryWake?.();
     const socket = this.socket;
     this.socket = null;
     if (socket && socket.readyState < WebSocket.CLOSING) socket.close(1000, "client-disconnect");

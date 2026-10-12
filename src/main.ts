@@ -305,6 +305,7 @@ const setState = (state: BridgeSessionState, message?: string) => {
   const labels: Record<BridgeSessionState, [string, string]> = {
     idle: ["Ready", "Waiting to start."],
     signaling: ["Connecting to signaling…", "Establishing the temporary rendezvous channel."],
+    waking: ["Waking secure channel…", "The signaling service is starting. Retrying automatically."],
     waiting: ["Waiting for another device", "Scan the QR code on the device you want to connect."],
     connecting: ["Device found, connecting", "Negotiating the best WebRTC route."],
     connected: [isReceivePortal ? "Ready to send" : "Device connected", isReceivePortal ? "Choose a file, text, link, or clipboard content to send." : "The encrypted transfer channel is ready."],

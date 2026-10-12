@@ -14,6 +14,7 @@ export type BridgeRole = "host" | "guest";
 export type BridgeSessionState =
   | "idle"
   | "signaling"
+  | "waking"
   | "waiting"
   | "connecting"
   | "connected"
@@ -191,6 +192,9 @@ export class BridgeSession {
         if (this.state !== "closed") {
           this.emitState("error", event.reason || `Signaling connection closed (${event.code})`);
         }
+        return;
+      case "connect-retry":
+        this.emitState("waking");
         return;
       case "error":
         this.failSession(`Signaling error: ${event.code}`);
