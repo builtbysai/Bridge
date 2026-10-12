@@ -197,7 +197,7 @@ const buttons = [...document.querySelectorAll<HTMLButtonElement>("[data-action]"
 // guest joining: no QR to show — the code is the invitation
 const localName = displayDeviceName().toUpperCase();
 if (peerlineLocal) peerlineLocal.textContent = localName || "THIS DEVICE";
-let peerName = "PAIRED DEVICE";
+
 
 if ((isGuest || pairingError) && qrWrap) qrWrap.hidden = true;
 if (isGuest && askEl) askEl.textContent = "Joining session.";
@@ -533,7 +533,6 @@ const attachTransferEngine = async () => {
     onPeerHello: name => {
       const clean = name.trim().toUpperCase().slice(0, 48);
       if (peerlinePeer && clean) peerlinePeer.textContent = clean;
-      peerName = clean || peerName;
     }
   });
   engine.announcePresence(displayDeviceName());
