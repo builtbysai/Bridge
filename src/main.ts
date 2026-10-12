@@ -320,7 +320,7 @@ const setState = (state: BridgeSessionState, message?: string) => {
     connecting: ["note-block", "CONNECTING", "PEER FOUND", "Device found", "CONNECTING\u2026"],
     connected: ["link-block", "LIVE", "2 PEERS"],
     closed: ["note-block", "ENDED", "NOTHING REMAINS", "Session ended.", "NOTHING REMAINS"],
-    error: ["note-block", "FAILED", "CONNECTION FAILED", message ?? "Couldn't connect", "CHECK YOUR CONNECTION AND TRY AGAIN"]
+    error: ["note-block", "FAILED", "CONNECTION FAILED", message ?? "Couldn't connect", message ? "" : "CHECK YOUR CONNECTION AND TRY AGAIN"]
   };
   const [block, word, sub, note, noteSub] = labels[state];
   showBlock(block as "invite-block" | "link-block" | "note-block");
