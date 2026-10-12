@@ -47,7 +47,7 @@ const attemptedPairing = params.has("session") || hash.has("key") || params.get(
 const joiningSession = rawJoiningSession && SESSION_PATTERN.test(rawJoiningSession) ? rawJoiningSession.toLowerCase() : null;
 const joiningSecret = rawJoiningSecret && SECRET_PATTERN.test(rawJoiningSecret) ? rawJoiningSecret.toLowerCase() : null;
 const pairingError = attemptedPairing && (!joiningSession || !joiningSecret)
-  ? "This pairing link is incomplete or invalid. Ask the sender for a fresh Bridge link or QR code."
+  ? "This link is broken. Ask the sender for a new one."
   : null;
 const isGuest = !pairingError && Boolean(joiningSession && joiningSecret);
 const isReceivePortal = isGuest && isReceivePortalUrl(currentUrl);
@@ -74,9 +74,9 @@ app.innerHTML = `
     </header>
 
     <section class="hero ${isReceivePortal ? "portal-hero" : ""}">
-      <p class="eyebrow">${isReceivePortal ? "Guest Receive Portal" : "Temporary device connection"}</p>
+      <p class="eyebrow">${isReceivePortal ? "Receive" : "Send between devices"}</p>
       <h1>${isReceivePortal ? "Send something to this device." : "Move something between devices."}</h1>
-      <p class="lede">${isReceivePortal ? "Choose what you want to send. It travels over the temporary encrypted peer connection and this portal expires with the session." : "No account. No permanent cloud drive. Pair two browsers, transfer what you need, disconnect."}</p>
+      <p class="lede">${isReceivePortal ? "Pick what to send. Nothing is stored, and this page stops working when the session ends." : "No account. No permanent cloud drive. Pair two browsers, transfer what you need, disconnect."}</p>
     </section>
 
     <section class="link-diagram" id="link-diagram" data-state="idle" aria-hidden="true">
@@ -87,10 +87,10 @@ app.innerHTML = `
 
     <section class="pair-card ${isReceivePortal ? "portal-card" : ""}">
       <div class="pair-info">
-        <p class="label" id="pair-label">${isReceivePortal ? "Sending to paired device" : isGuest ? "Joining device" : "Connect another device"}</p>
+        <p class="label" id="pair-label">${isReceivePortal ? "Sending to paired device" : isGuest ? "Joining\u2026" : "Scan to connect"}</p>
         <div class="qr-wrap" id="qr-wrap" ${isGuest || pairingError ? "hidden" : ""}><canvas id="qr"></canvas></div>
-        <p class="code" id="session-code">${pairingError ? "Invalid pairing link" : isGuest ? `Session <strong>${joiningSession?.toUpperCase()}</strong>` : "Creating secure session…"}</p>
-        <p class="fine" id="session-detail">${pairingError ? pairingError : isReceivePortal ? "This page can send into the paired session. It does not expose the receiver's dashboard or transfer history." : isGuest ? "Pairing information was read from this link." : "A high-entropy secret will be embedded in the QR fragment and is not sent in the page request."}</p>
+        <p class="code" id="session-code">${pairingError ? "Invalid pairing link" : isGuest ? `Session <strong>${joiningSession?.toUpperCase()}</strong>` : "Creating session…"}</p>
+        <p class="fine" id="session-detail">${pairingError ? pairingError : isReceivePortal ? "This page only sends. It can't see the other device's files." : isGuest ? "" : ""}</p>
       </div>
       <div class="actions ${isReceivePortal ? "portal-actions" : ""}">
         ${primaryActions}
@@ -117,8 +117,8 @@ app.innerHTML = `
     <section class="connection">
       <span class="dot" id="connection-dot"></span>
       <div>
-        <strong id="connection-title">Connecting to signaling…</strong>
-        <small id="connection-detail">Preparing a secure peer session.</small>
+        <strong id="connection-title">Connecting…</strong>
+        <small id="connection-detail">Setting up.</small>
       </div>
       <span class="route-pill" id="route-pill" hidden></span>
     </section>
@@ -214,7 +214,7 @@ const transferOffers = new Map<string, IncomingTransfer>();
 
 const queue = new TransferQueue(async (file, { signal, onProgress }) => {
   const transferEngine = engine;
-  if (!transferEngine || sessionState !== "connected") throw new Error("Peer connection is not ready");
+  if (!transferEngine || sessionState !== "connected") throw new Error("Not connected yet");
   if (signal.aborted) throw new DOMException("Transfer cancelled", "AbortError");
 
   activeQueueProgress = progress => onProgress({
@@ -304,13 +304,13 @@ const setState = (state: BridgeSessionState, message?: string) => {
   if (!title || !connectionDetail) return;
   const labels: Record<BridgeSessionState, [string, string]> = {
     idle: ["Ready", "Waiting to start."],
-    signaling: ["Connecting to signaling…", "Establishing the temporary rendezvous channel."],
-    waking: ["Waking secure channel…", "The signaling service is starting. Retrying automatically."],
+    signaling: ["Connecting…", "Setting up the encrypted link."],
+    waking: ["Waking up…", "Retrying automatically."],
     waiting: ["Waiting for another device", "Scan the QR code on the device you want to connect."],
-    connecting: ["Device found, connecting", "Negotiating the best WebRTC route."],
-    connected: [isReceivePortal ? "Ready to send" : "Device connected", isReceivePortal ? "Choose a file, text, link, or clipboard content to send." : "The encrypted transfer channel is ready."],
-    closed: ["Session closed", message ?? "This temporary session has ended."],
-    error: ["Connection problem", message ?? "Unable to establish the session."]
+    connecting: ["Device found", "Connecting\u2026"],
+    connected: [isReceivePortal ? "Ready to send" : "Connected", isReceivePortal ? "Choose what to send." : "Pick something to send."],
+    closed: ["Session ended", message ?? ""],
+    error: ["Couldn't connect", message ?? "Check your connection and try again."]
   };
   const [heading, subheading] = labels[state];
   title.textContent = heading;
@@ -381,11 +381,11 @@ const hideIncomingOffer = (discardTracking = false) => {
 
 const presentIncomingOffer = (offer: IncomingTransfer) => {
   if (isReceivePortal) {
-    engine?.reject(offer.transferId, "Receive Portal is send-only");
+    engine?.reject(offer.transferId, "This page only sends.");
     return;
   }
   if (pendingOffer) {
-    engine?.reject(offer.transferId, "Another incoming transfer is awaiting a decision");
+    engine?.reject(offer.transferId, "Another file is waiting for your decision.");
     return;
   }
 
@@ -418,7 +418,7 @@ const presentIncomingOffer = (offer: IncomingTransfer) => {
 
 const sendTextValue = async (value: string, kind: Exclude<TransferKind, "file">) => {
   const transferEngine = engine;
-  if (!transferEngine) throw new Error("Peer connection is not ready");
+  if (!transferEngine) throw new Error("Not connected yet");
   const label = kind === "link" ? "Link" : kind === "clipboard" ? "Clipboard" : "Text";
   const handle = transferEngine.startTextTransfer(value, kind);
   transferNames.set(handle.transferId, label);
@@ -430,7 +430,7 @@ const sendTextValue = async (value: string, kind: Exclude<TransferKind, "file">)
 };
 
 const fulfillTextRequest = async (request: IncomingRequest) => {
-  const promptLabel = request.kind === "link" ? "Paste the link to send" : request.kind === "clipboard" ? "Paste clipboard text to send" : "Enter text to send";
+  const promptLabel = request.kind === "link" ? "Paste the link to send" : request.kind === "clipboard" ? "Paste text to send" : "Enter text to send";
   const value = window.prompt(promptLabel);
   if (value === null) {
     engine?.declineRequest(request.requestId, "Request cancelled");
@@ -446,7 +446,7 @@ const sendTextLike = async (kind: Exclude<TransferKind, "file">) => {
     try { value = await navigator.clipboard.readText(); } catch { value = null; }
   }
   if (value === null || (kind === "clipboard" && value.length === 0)) {
-    const label = kind === "link" ? "Paste the link to send" : kind === "clipboard" ? "Paste clipboard text to send" : "Enter text to send";
+    const label = kind === "link" ? "Paste the link to send" : kind === "clipboard" ? "Paste text to send" : "Enter text to send";
     value = window.prompt(label);
   }
   if (value === null) return;
