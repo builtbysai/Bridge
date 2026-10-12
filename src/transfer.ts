@@ -46,6 +46,7 @@ type TransferCallbacks = {
   onIncomingOffer?: (offer: IncomingTransfer) => void;
   onIncomingRequest?: (request: IncomingRequest) => void;
   onRequestDeclined?: (requestId: string, reason?: string) => void;
+  onPeerHello?: (name: string) => void;
   onProgress?: (progress: TransferProgress) => void;
   onComplete?: (transferId: string, blob: Blob, sinkKind: ReceiveSink["kind"]) => void;
   onError?: (transferId: string | null, error: Error) => void;
@@ -245,6 +246,14 @@ export class TransferEngine {
     };
     if (this.cancelledTransfers.has(transferId)) throw new Error("Transfer cancelled");
     return this.offerSource(offer, bytes, nonce);
+  }
+
+  announcePresence(name: string): void {
+    try {
+      this.sendControl({ type: "peer-hello", name });
+    } catch {
+      // Presence is best-effort; the transfer still works without it.
+    }
   }
 
   request(kind: TransferKind): string {
@@ -536,6 +545,9 @@ export class TransferEngine {
         return;
       case "request-decline":
         this.callbacks.onRequestDeclined?.(message.requestId, message.reason);
+        return;
+      case "peer-hello":
+        this.callbacks.onPeerHello?.(message.name);
         return;
     }
   }
