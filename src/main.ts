@@ -1,4 +1,5 @@
 import QRCode from "qrcode";
+import { displayDeviceName } from "./device-name";
 import { BridgeSession, type BridgeSessionState } from "./bridge-session";
 import { deriveSessionKey } from "./crypto";
 import type { ConnectionRoute } from "./peer";
@@ -81,7 +82,7 @@ app.innerHTML = `
         <p class="code" id="session-code">SESSION <strong>&middot;&middot;&middot;&middot;</strong></p>
       </div>
       <div id="link-block" hidden>
-        <p class="peerline">THIS DEVICE <strong>&larr;&rarr;</strong> PAIRED DEVICE</p>
+        <p class="peerline"><span id="peerline-local">THIS DEVICE</span> <strong>&larr;&rarr;</strong> <span id="peerline-peer">PAIRED DEVICE</span></p>
         <p class="route" id="route-line">ENCRYPTED</p>
         ${isReceivePortal ? '<p class="portal-note">THIS PAGE ONLY SENDS</p>' : ''}
         <button class="drop" id="drop-zone" aria-disabled="true">
@@ -164,6 +165,8 @@ const stWord = document.querySelector<HTMLElement>("#st");
 const stSub = document.querySelector<HTMLElement>("#st-sub");
 const lamp = document.querySelector<HTMLElement>("#lamp");
 const routeLine = document.querySelector<HTMLElement>("#route-line");
+const peerlineLocal = document.querySelector<HTMLElement>("#peerline-local");
+const peerlinePeer = document.querySelector<HTMLElement>("#peerline-peer");
 const transferPanel = document.querySelector<HTMLElement>("#transfer-panel");
 const transferTitle = document.querySelector<HTMLElement>("#transfer-title");
 const transferDetail = document.querySelector<HTMLElement>("#transfer-detail");
@@ -192,6 +195,10 @@ const queueClear = document.querySelector<HTMLButtonElement>("#queue-clear");
 const buttons = [...document.querySelectorAll<HTMLButtonElement>("[data-action]")];
 
 // guest joining: no QR to show — the code is the invitation
+const localName = displayDeviceName().toUpperCase();
+if (peerlineLocal) peerlineLocal.textContent = localName || "THIS DEVICE";
+let peerName = "PAIRED DEVICE";
+
 if ((isGuest || pairingError) && qrWrap) qrWrap.hidden = true;
 if (isGuest && askEl) askEl.textContent = "Joining session.";
 if (isReceivePortal && askEl) askEl.textContent = "Send something to this device.";
@@ -522,8 +529,14 @@ const attachTransferEngine = async () => {
       transferOffers.delete(transferId);
       transferNames.delete(transferId);
       window.alert(reason ?? "Transfer cancelled");
+    },
+    onPeerHello: name => {
+      const clean = name.trim().toUpperCase().slice(0, 48);
+      if (peerlinePeer && clean) peerlinePeer.textContent = clean;
+      peerName = clean || peerName;
     }
   });
+  engine.announcePresence(displayDeviceName());
 };
 
 const enqueueFiles = (files: Iterable<File>) => {

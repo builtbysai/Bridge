@@ -81,6 +81,12 @@ export type RequestDecline = {
   reason?: string;
 };
 
+export type PeerHello = {
+  type: "peer-hello";
+  version: typeof PROTOCOL_VERSION;
+  name: string;
+};
+
 export type ControlMessage =
   | TransferOffer
   | TransferAccept
@@ -91,7 +97,8 @@ export type ControlMessage =
   | TransferResumeQuery
   | TransferResumeState
   | RequestItem
-  | RequestDecline;
+  | RequestDecline
+  | PeerHello;
 
 type WithoutVersion<T> = T extends unknown ? Omit<T, "version"> : never;
 export type ControlPayload = WithoutVersion<ControlMessage>;
@@ -225,6 +232,12 @@ export const decodeControl = (raw: string): ControlMessage => {
         version: PROTOCOL_VERSION,
         requestId: requireRequestId(record),
         reason: optionalReason(record)
+      };
+    case "peer-hello":
+      return {
+        type: "peer-hello",
+        version: PROTOCOL_VERSION,
+        name: requireString(record, "name", { maxLength: 48 })
       };
     default:
       throw new Error("Unsupported control message type");
