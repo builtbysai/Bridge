@@ -1,19 +1,280 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#070a10" />
-  <meta name="description" content="Temporary browser-to-browser device transfer." />
-  <link rel="manifest" href="/Bridge/manifest.webmanifest" />
-  <link rel="icon" href="/Bridge/icons/bridge-192.svg" type="image/svg+xml" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>Bridge</title>
-  <script type="module" crossorigin src="/Bridge/assets/index-D3gM-iuX.js"></script>
-  <link rel="stylesheet" crossorigin href="/Bridge/assets/index-k35iue4V.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f8f8f6">
+<title>Bridge — Interaction study</title>
+<style>
+:root { color-scheme:light; --ink:#202421; --shade:#646c67; --light:#8c938d; --line:#d9ddda; --paper:#f8f8f6; --white:#fff; --green:#347654; --warm:#b8553a; --focus:#16568b; font:16px/1.42 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif; }
+*,*::before,*::after{box-sizing:border-box}
+html{min-width:320px;background:var(--paper)}
+body{margin:0;min-width:320px;color:var(--ink);background:var(--paper);min-height:100dvh}
+button,input,textarea{font:inherit}button{cursor:pointer;color:inherit;-webkit-tap-highlight-color:transparent}
+button:disabled{cursor:default;opacity:.45}
+button:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-visible{outline:3px solid var(--focus);outline-offset:3px}
+[hidden]{display:none!important}
+.app{width:min(920px,calc(100% - 76px));min-height:100dvh;margin:0 auto;display:flex;flex-direction:column}
+header{height:88px;flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}
+.logo{font-size:26px;font-weight:750;letter-spacing:-1.5px;line-height:1;display:flex;align-items:baseline;gap:6px}
+.logo span{color:#7c847e;font-size:14px;font-weight:650;letter-spacing:0}
+.headright{display:flex;align-items:center;gap:16px;font-size:14px}
+.headright .about{border:0;background:transparent;padding:8px 0;text-decoration:underline;text-decoration-color:#c3c8c3;text-underline-offset:5px}
+.headright .privacy{color:var(--shade);display:flex;align-items:center;gap:7px;white-space:nowrap}
+.headright .privacy svg{width:15px;height:15px;stroke:currentColor}
+main{flex:1;display:flex;flex-direction:column;justify-content:center;padding:40px 0 52px}
+.connect-screen{display:grid;grid-template-columns:minmax(0,1fr) 284px;column-gap:94px;row-gap:0;align-items:start;grid-template-areas:"intro qr" "devices qr" "actions qr"}
+.intro{grid-area:intro}
+h1,h2,h3,p{margin:0}
+h1{font-size:clamp(30px,3.45vw,39px);letter-spacing:-1.55px;font-weight:640;line-height:1.13;margin-bottom:14px}
+.lead{color:#58605a;font-size:16px;line-height:1.55;max-width:430px}
+.qr-area{grid-area:qr;justify-self:end;width:284px;text-align:center}
+.qr-sheet{width:284px;height:284px;background:#fff;padding:17px;border:1px solid #d6dad7;display:grid;place-items:center}
+.qr-sheet img{width:100%;height:100%;object-fit:contain;image-rendering:pixelated}
+.qr-caption{font-size:14px;font-weight:550;margin-top:13px}
+.qr-disclaimer{font-size:12px;color:var(--light);margin-top:5px;line-height:1.5}
+.devices{grid-area:devices;margin-top:40px;max-width:390px}
+.device{display:flex;gap:14px;align-items:center;padding:16px 0;border-top:1px solid var(--line)}
+.device svg{width:22px;height:22px;stroke:#777f78;stroke-width:1.6;flex:0 0 auto}
+.device .name{display:block;font-weight:610;font-size:15px}
+.device .hint{display:block;color:var(--shade);font-size:13px;margin-top:2px}
+.device .ready{display:flex;align-items:center;gap:7px;margin-left:auto;color:var(--shade);font-size:12px;white-space:nowrap}
+.pulse{height:7px;width:7px;border-radius:100%;background:#a78f62;flex:0 0 auto}
+.actions{grid-area:actions;display:flex;flex-wrap:wrap;gap:10px;margin-top:26px;align-items:center}
+.btn{border:1px solid #bbc1bb;background:transparent;min-height:46px;display:inline-flex;justify-content:center;align-items:center;gap:9px;padding:10px 17px;font-weight:600;font-size:14px;border-radius:5px;transition:background .12s,border-color .12s}
+.btn:hover:not(:disabled){background:#eaece8;border-color:#89918a}
+.btn-main{background:#242925;color:#fff;border-color:#242925}
+.btn-main:hover:not(:disabled){background:#404942;border-color:#404942}
+.btn svg{width:17px;height:17px;stroke:currentColor;stroke-width:1.8;fill:none}
+.subnote{color:var(--shade);font-size:13px;line-height:1.5;margin-top:14px;width:100%}
+.subnote strong{font-weight:600;color:var(--ink)}
+.footer{border-top:1px solid var(--line);padding:17px 0 23px;display:flex;justify-content:space-between;align-items:center;gap:24px;color:var(--shade);font-size:12px}
+.footer a{color:inherit;text-decoration:none;border-bottom:1px solid #b9c0b9}
+.footer a:hover{color:var(--ink)}
+
+/* Connected: intentional transfer work surface. */
+.connected-screen{max-width:830px;width:100%;margin:0 auto}
+.link-header{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:39px}
+.link-context{display:flex;align-items:center;gap:10px;font-weight:600;font-size:16px;letter-spacing:-.1px;flex-wrap:wrap}
+.link-context .separator{color:#89918a;font-weight:400}
+.link-context .connected-indicator{height:8px;width:8px;background:#378158;border-radius:100%;display:inline-block;flex:0 0 auto}
+.link-status{color:var(--shade);font-size:13px;margin-top:7px;padding-left:18px}
+.textlink{border:0;background:none;padding:3px 0;font-size:13px;color:#555f58;text-decoration:underline;text-underline-offset:4px;text-decoration-color:#9da69f;white-space:nowrap}
+.textlink:hover{color:#161a17}
+.connected-grid{display:grid;grid-template-columns:minmax(0,1fr) 242px;gap:54px}
+.transfer-heading{font-size:28px;font-weight:640;letter-spacing:-.85px;margin:0 0 18px}
+.drop-target{background:#fff;border:1.5px dashed #9ea6a0;border-radius:5px;min-height:196px;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;padding:26px;gap:9px;transition:background .16s,border-color .16s}
+.drop-target.is-dragover{background:#eef5ef;border-color:#3b7855}
+.drop-target .file-icon{width:26px;height:26px;color:#566159;stroke-width:1.4;margin-bottom:4px}
+.drop-target p{color:#677068;font-size:13px}
+.choices{display:flex;gap:9px;align-items:center;margin-top:20px}
+.choices button{flex:1;justify-content:center}
+.support-title{font-size:13px;font-weight:650;margin:5px 0 5px}
+.choice-row{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);gap:12px;padding:15px 0;background:transparent;border-top:0;border-left:0;border-right:0;width:100%;text-align:left;font-size:14px;font-weight:590}
+.choice-row svg{height:17px;width:17px;stroke:#718076;stroke-width:1.75}
+.choice-row:hover{color:var(--green)}
+.choice-row .sm{display:block;color:var(--shade);font-size:12px;margin-top:2px;font-weight:400}
+.detail-row{display:flex;align-items:center;gap:9px;padding-top:22px;font-size:12px;color:var(--shade)}
+.detail-row svg{width:16px;height:16px;stroke:#647369;stroke-width:1.6;flex:0 0 auto}
+.detail-row strong{color:#347654;font-weight:550}
+.extra{display:block;color:var(--shade);font-size:12px;line-height:1.55;margin-top:16px}
+
+/* Inline transfer panels, not new pages or modal stacks. */
+.panel{padding:0;margin:0;max-width:520px}
+.panel h2{font-size:26px;letter-spacing:-.8px;line-height:1.2;margin-bottom:9px;font-weight:650}
+.panel p{font-size:14px;color:#626b63;line-height:1.55;margin-bottom:22px}
+.entry-label{font-size:13px;font-weight:600;display:block;margin-bottom:9px}
+textarea,.text-input{display:block;width:100%;background:white;border:1px solid #b7beb8;border-radius:4px;padding:13px;outline-offset:2px;color:var(--ink);font-size:15px}
+textarea{min-height:148px;resize:vertical}
+.panel-actions{display:flex;gap:12px;align-items:center;margin-top:19px;flex-wrap:wrap}
+.file-list{margin:20px 0 0;list-style:none;padding:0}
+.file-list li{padding:13px 0;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:11px;font-size:14px;min-width:0}
+.file-list li span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+.file-list li small{color:var(--shade);font-size:12px;white-space:nowrap}
+.file-list .tiny{width:16px;height:16px;flex:0 0 auto;stroke:#7f8981}
+.progress{height:4px;background:#e0e5df;border-radius:4px;overflow:hidden;margin:18px 0 8px}
+.progress-bar{height:100%;width:0%;background:#377951;transition:width .18s linear}
+.measure{display:flex;justify-content:space-between;font-size:12px;color:var(--shade)}
+.result-mark{width:32px;height:32px;border:1.5px solid #2c7750;color:#2c7750;display:grid;place-items:center;border-radius:50%;font-size:20px;margin-bottom:18px}
+.request-types{display:grid;margin:12px 0 0;border-top:1px solid var(--line)}
+.request-type{display:flex;gap:10px;align-items:center;padding:13px 0;border-bottom:1px solid var(--line);cursor:pointer;font-size:14px}
+.request-type input{accent-color:var(--green);width:17px;height:17px;margin:0}
+.request-type small{color:var(--shade);font-size:12px;display:block}
+.cancel-link{background:none;border:0;text-decoration:underline;text-underline-offset:3px;color:var(--shade);padding:10px 0;font-size:14px}
+.incoming{border-top:2px solid #3b7955;padding-top:19px}
+.incoming-icon{color:#347654;font-size:13px;font-weight:550;margin-bottom:9px}
+.statusbox{margin-top:12px;padding:12px 14px;background:#e9ede7;color:#435247;font-size:13px;border-left:2px solid #71937a}
+
+/* Compact overlays used exclusively for the mockup, not the product. */
+#demo-toggle{background:transparent;border:0;padding:0;font-size:12px;color:#555f58;text-decoration:underline;text-underline-offset:3px;white-space:nowrap}
+#demo-panel{position:fixed;bottom:59px;right:18px;z-index:5;background:#202623;color:#fff;padding:14px;width:min(305px,calc(100vw - 32px));box-shadow:0 9px 30px #0003;border-radius:4px}
+#demo-panel h3{font-size:13px;margin-bottom:10px}
+#demo-panel button{background:#3a423d;border:1px solid #6c786d;color:#fff;border-radius:3px;padding:9px 10px;font-size:13px;text-align:left;min-height:36px}
+#demo-panel button:hover{background:#4d5a50}
+#demo-panel .demo-choices{display:grid;gap:7px;grid-template-columns:1fr 1fr}
+#demo-panel p{color:#bdc6bd;font-size:11px;margin-top:10px;line-height:1.5}
+#demo-panel a{color:#fff}
+.toast{position:fixed;bottom:19px;left:50%;transform:translateX(-50%);background:#222923;color:white;padding:12px 16px;font-size:13px;border-radius:4px;z-index:8;white-space:nowrap;max-width:calc(100vw - 30px);text-overflow:ellipsis;overflow:hidden;box-shadow:0 4px 24px #0002}
+.about-panel{font-size:14px;max-width:550px;line-height:1.6}
+.about-panel h1{margin-bottom:20px}.about-panel p{margin:0 0 18px;color:#566159}
+.about-panel ul{padding-left:22px;color:#566159}.about-panel li{margin-bottom:9px}
+
+@media (max-width:700px){
+.app{width:calc(100% - 42px)}
+header{height:65px}
+.logo{font-size:24px}.logo span{font-size:13px}
+.headright .privacy{display:none}
+main{padding:29px 0 35px;justify-content:flex-start}
+.connect-screen{grid-template-columns:1fr;grid-template-areas:"intro" "actions" "qr" "devices";justify-items:stretch;row-gap:0}
+h1{font-size:30px;letter-spacing:-.9px;margin-bottom:9px}
+.lead{font-size:14px;max-width:460px;line-height:1.45}
+.qr-area{margin-top:26px;justify-self:stretch;width:100%;border-top:1px solid var(--line);padding-top:20px;text-align:left;display:flex;flex-direction:row-reverse;align-items:center;gap:17px}
+.qr-sheet{width:144px;height:144px;flex:0 0 auto;padding:8px}
+.qr-caption{font-size:14px;margin-top:0}
+.qr-disclaimer{font-size:12px;margin-top:7px}
+.actions{margin-top:24px;display:grid;grid-template-columns:1.1fr 1fr;gap:9px}
+.actions .btn{padding:10px 9px;white-space:nowrap;font-size:13px;min-height:47px}
+.actions .subnote{grid-column:1/-1;margin-top:2px;font-size:12px}
+.actions .qr-reveal{display:none}
+.qr-area{display:flex;grid-area:qr;margin-top:22px}
+.connect-screen{grid-template-areas:"intro" "actions" "qr" "devices"}
+.actions{margin-top:25px}
+.devices{margin-top:28px;width:100%;max-width:none}
+.device{padding:14px 0}.device .name{font-size:14px}
+.footer{font-size:11px;padding:13px 0 17px}
+.connected-screen{width:100%;max-width:450px}
+.link-header{margin-bottom:28px}
+.link-context{font-size:14px;gap:7px}
+.link-status{font-size:12px;padding-left:0}
+.connected-grid{grid-template-columns:1fr;gap:18px}
+.transfer-heading{font-size:23px;margin-bottom:13px}
+.drop-target{min-height:133px;padding:18px;gap:6px}
+.drop-target .file-icon{width:22px;height:22px;margin-bottom:1px}
+.drop-target .btn{min-height:43px}
+.choices{margin-top:15px}
+.support-title{margin:0}
+.choice-row{padding:13px 0}
+.detail-row{padding-top:7px}
+.panel h2{font-size:23px}
+#demo-toggle{font-size:11px}
+#demo-panel{bottom:44px;right:9px}
+}
+@media (max-width:355px){.app{width:calc(100% - 32px)}.qr-area{margin-top:18px}.qr-sheet{width:128px;height:128px}.qr-area{width:100%}.actions{margin-top:17px}.devices{margin-top:18px}.btn{padding-left:11px;padding-right:11px}.actions .btn{font-size:12px}.logo{font-size:23px}}
+@media (prefers-reduced-motion:reduce){*,*:before,*:after{transition:none!important;animation:none!important}}
+@media (forced-colors:active){.pulse,.link-context .connected-indicator,.progress-bar{background:Highlight}.qr-sheet,.drop-target,.btn{border:1px solid CanvasText}}
+</style>
 </head>
 <body>
-  <div id="app"></div>
-</body>
-</html>
+<div class="app">
+  <header>
+    <div class="logo" aria-label="Bridge">bridge<span aria-hidden="true">↔</span></div>
+    <div class="headright"><span class="privacy"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>No account required</span><button class="about" id="about-btn">About Bridge</button></div>
+  </header>
+  <main id="main" aria-live="polite"></main>
+  <div class="footer"><span id="footer-secondary">Private transfer between browsers.</span><button type="button" id="demo-toggle" aria-expanded="false" aria-controls="demo-panel">Preview states</button></div>
+</div>
+<div id="demo-panel" hidden>
+  <h3>Explore the interaction</h3>
+  <div class="demo-choices">
+  <button data-demo="waiting">Waiting for device</button><button data-demo="connected">Connected</button>
+  <button data-demo="incoming">Incoming file</button><button data-demo="request">Request content</button>
+  <button data-demo="interrupted">Connection lost</button><button data-demo="complete">Transfer complete</button>
+  </div>
+  <p>Simulated pairing and transfer states. The QR only opens the live Bridge website, not this prototype.</p>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<input type="file" id="file-input" multiple hidden>
+<script>
+(() => {
+  'use strict';
+  const byId = s => document.getElementById(s);
+  const main = byId('main');
+  const demoPanel = byId('demo-panel');
+  const toggle = byId('demo-toggle');
+  const picker = byId('file-input');
+  const invite = 'https://builtbysai.com/Bridge/';
+  const qr = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQgAAAEICAIAAAAslP2oAAAE7UlEQVR4nO3dUYotNRRAUVschOL8hyY6i+uPP8LOg0BCkn5rfWvd6vt6E6jTqXx9Pp9fgP/79fQNwI2EAUEYEIQBQRgQhAFBGBCEAUEYEIQBQRgQhAFBGBCEAUEYEH6b/R9+//OPHfex3D9//b3kOrt/3tn7PPX9j+7zu/4+WDEgCAOCMCAIA4IwIAgDgjAgTM8xRlbNDWadmjOMPnf2v5+9/1Vzj91zidd/H6wYEIQBQRgQhAFBGBCEAUEYEJbNMUa+63PxVfezez/Gqe9t5JXfBysGBGFAEAYEYUAQBgRhQBAGhO1zjFeser4+e51Vc4nZ/R6j69w29zjFigFBGBCEAUEYEIQBQRgQhAHBHOM/q96zdOo6r59fcRsrBgRhQBAGBGFAEAYEYUAQBoTtc4zb/r5/93uiXj+vY/e/122/DyNWDAjCgCAMCMKAIAwIwoAgDAjL5hj+7v/HVu2X2D2vWDXfeP33wYoBQRgQhAFBGBCEAUEYEIQB4evz+Zy+hyucOn9699xg93uuvisrBgRhQBAGBGFAEAYEYUAQBoTpOcbrz91fef/Sqfdfvf69rWLFgCAMCMKAIAwIwoAgDAjCgLD9fIxVz7NP7XPYff1V+0Ben/Pcdh0rBgRhQBAGBGFAEAYEYUAQBoRl+zFGdj8v3/25I6fey/TKOeIjp+5/lhUDgjAgCAOCMCAIA4IwIAgDwrL9GLvPsZ793FNemYeMvLI/ZDcrBgRhQBAGBGFAEAYEYUAQBoRj53yfes79s80ZTu2XeOW8lBErBgRhQBAGBGFAEAYEYUAQBoTtc4zX37902/zkle/ndVYMCMKAIAwIwoAgDAjCgCAMCNPvlbrt+fepc6lHbtuPMXLb97+b/RiwgDAgCAOCMCAIA4IwIAgDwrLzMVaZfS6++xzx2c8deeW8iFPnY4ycmkdZMSAIA4IwIAgDgjAgCAOCMCBsn2O8sj/h1PV3f+7u7997peAnIgwIwoAgDAjCgCAMCMKAsOx8jN37H3b//f2sU+dXnJoL7T4nZNXPu+o6VgwIwoAgDAjCgCAMCMKAIAwI03OMU/OHV85VGLltDrPbqXPQV13figFBGBCEAUEYEIQBQRgQhAFh+r1St70n6pV5yKxX3iv1XeczVgwIwoAgDAjCgCAMCMKAIAwIx/ZjnHLbe65u+9xTbnufmBUDgjAgCAOCMCAIA4IwIAgDwvb9GLf9Xf5t54Kvmv/sft6/+/1au6/jvVKwgDAgCAOCMCAIA4IwIAgDwrL9GLc5dd7C7u/n9f0ht53nPWLFgCAMCMKAIAwIwoAgDAjCgDC9H2Pk1L6LVfsWRlbtP3llzjDrlX0a9mPAAsKAIAwIwoAgDAjCgCAMCMvmGCO3nVc9+7x/1XPx3fs3ds8rTu0zGbEfAw4QBgRhQBAGBGFAEAYEYUDYPse4zanzGW5z2/6Q3e/1sh8DFhAGBGFAEAYEYUAQBgRhQPjp5hi3nfOwyu73Zd328+5mxYAgDAjCgCAMCMKAIAwIwoCwfY7x+nPu287f2H0/q7w+V7FiQBAGBGFAEAYEYUAQBgRhQFg2x3jlPUunznlYNX9Ydf3b7vO2/R5WDAjCgCAMCMKAIAwIwoAgDAhfn8/n9D3AdawYEIQBQRgQhAFBGBCEAUEYEIQBQRgQhAFBGBCEAUEYEIQBQRgQ/gUflSbXI84ytQAAAABJRU5ErkJggg==';
+  let state = 'waiting', toastTimer = 0, timer = 0, transferTimer = 0, percent = 0;
+  let files = [], content = '', requestChoice = 'file', transferDirection = 'outgoing';
+  const icon = (name, cls='') => {
+    const icons = {
+      phone:'<rect x="6" y="2.5" width="12" height="19" rx="2"/><path d="M10 18.5h4"/>',
+      file:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>',
+      copy:'<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
+      share:'<path d="M12 15V3m0 0L8 7m4-4 4 4"/><path d="M4 13v5a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-5"/>',
+      arrow:'<path d="M5 12h14m-6-6 6 6-6 6"/>',
+      down:'<path d="M12 3v15m-5-5 5 5 5-5M5 21h14"/>',
+      note:'<rect x="4" y="3" width="16" height="18" rx="1"/><path d="M7 8h10M7 12h10M7 16h7"/>',
+      laptop:'<rect x="4" y="4" width="16" height="13" rx="1.5"/><path d="M2 20h20"/>'
+    };
+    return `<svg class="${cls}" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${icons[name]}</svg>`;
+  };
+  function escape(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+  function notify(message){const el=byId('toast');clearTimeout(toastTimer);el.textContent=message;el.hidden=false;toastTimer=setTimeout(()=>{el.hidden=true},2500)}
+  function set(stateName){clearInterval(transferTimer);transferTimer=0;state=stateName;render();window.scrollTo({top:0,behavior:'instant'});}
+  function render(){
+    byId('footer-secondary').textContent = ['connected','choose','writing','request','incoming','transferring','complete'].includes(state) ? 'Encrypted connection to another browser.' : 'Private transfer between browsers.';
+    if(state==='waiting') return renderWaiting();
+    if(state==='about') return renderAbout();
+    return renderConnected();
+  }
+  function renderWaiting(){
+    main.innerHTML=`<div class="connect-screen">
+    <section class="intro"><h1>Connect another device.</h1><p class="lead">To move files, photos or text, open this invitation on the other device.</p></section>
+    <div class="qr-area" id="qr-area"><div class="qr-sheet"><img alt="QR code preview that opens the current Bridge website" src="${qr}"></div><div class="qr-copy"><p class="qr-caption">Or scan with the other device</p><p class="qr-disclaimer">Demo QR, not a pairing session. Opens the current website.</p></div></div>
+    <div class="devices"><div class="device">${icon('phone')}<div><span class="name">This browser</span><span class="hint">Ready to connect</span></div><div class="ready"><span class="pulse"></span>Waiting</div></div></div>
+    <div class="actions"><button class="btn btn-main" id="share">${icon('share')} Share invitation</button><button class="btn" id="copy">${icon('copy')} Copy link</button><p class="subnote">Invitations expire after 10 minutes. <strong>Only share one with someone you trust.</strong></p></div>
+    </div>`;
+    byId('copy').addEventListener('click',()=>copyLink());
+    byId('share').addEventListener('click',async()=>{
+      if(navigator.share){try{await navigator.share({title:'Bridge',text:'Open Bridge on your device',url:invite});}catch(e){if(e.name!=='AbortError') notify('Sharing unavailable. Try Copy link.')} }
+      else copyLink();
+    });
+  }
+  async function copyLink(){try{await navigator.clipboard.writeText(invite);notify('Demo link copied. This is not an active invitation.')}catch(e){notify('Copy unavailable in this preview.')}}
+  function linkHeader(){return `<div class="link-header"><div><div class="link-context"><span class="connected-indicator"></span> This browser <span class="separator">to</span> MacBook Air</div><div class="link-status">${state==='interrupted'?'Connection interrupted. Trying to reconnect…':'Connected. You can send and receive.'}</div></div><button type="button" id="end" class="textlink">End session</button></div>`}
+  function sidebar(){return `<aside><button class="choice-row" id="send-text"><span>Send text or a link<span class="sm">Paste a note, address or URL</span></span>${icon('arrow')}</button><button class="choice-row" id="request"><span>Request a file or text<span class="sm">Ask the other device to send it</span></span>${icon('arrow')}</button><button class="choice-row" id="receive"><span>Receive from someone else<span class="sm">Create a guest send link</span></span>${icon('arrow')}</button><div class="detail-row">${icon('laptop')} <span>Direct connection <strong>· Encrypted</strong></span></div><p class="extra">Files go to the other browser. Each incoming file requires approval.</p></aside>`}
+  function renderConnected(){
+    let central='';
+    switch(state){
+      case 'connected': central=`<h1 class="transfer-heading">Send to MacBook Air</h1><section class="drop-target" id="drop-target"><div>${icon('file','file-icon')}</div><button id="pick" class="btn btn-main">Choose files</button><p>or drop them here from your computer</p></section>`; break;
+      case 'choose': central=`<section class="panel"><h2>Ready to send</h2><p>Check the files before sending them to MacBook Air.</p><ul class="file-list">${files.map(f=>`<li>${icon('file','tiny')}<span>${escape(f.name)}</span><small>${readSize(f.size)}</small></li>`).join('')}</ul><div class="panel-actions"><button class="btn btn-main" id="send-files">Send ${files.length} ${files.length===1?'file':'files'}</button><button class="cancel-link" id="back">Cancel</button></div></section>`; break;
+      case 'writing': central=`<section class="panel"><h2>Send text</h2><p>Text and links can be copied on the other device.</p><label class="entry-label" for="message">Message or link</label><textarea id="message" placeholder="Paste or type here…">${escape(content)}</textarea><div class="panel-actions"><button class="btn btn-main" id="send-message">Send text</button><button class="cancel-link" id="back">Cancel</button></div></section>`; break;
+      case 'request': central=`<section class="panel"><h2>Request something</h2><p>MacBook Air will be asked to choose and send it to you.</p><div class="request-types">${[['file','File or photo'],['text','Text or link'],['clipboard','Clipboard text']].map(([v,l])=>`<label class="request-type"><input type="radio" name="request-type" value="${v}" ${requestChoice===v?'checked':''}><span>${l}</span></label>`).join('')}</div><div class="panel-actions"><button class="btn btn-main" id="send-request">Send request</button><button class="cancel-link" id="back">Cancel</button></div></section>`;break;
+      case 'request-sent': central=`<section class="panel"><h2>Request sent</h2><p>Waiting for MacBook Air to respond. They can choose what to send or decline.</p><div class="statusbox">Your request is pending on the other device.</div><div class="panel-actions"><button class="btn" id="back">Back to transfers</button></div></section>`;break;
+      case 'incoming': central=`<section class="panel incoming"><div class="incoming-icon">Incoming transfer</div><h2>MacBook Air wants to send a file</h2><p>Review the item before deciding whether to accept it.</p><ul class="file-list"><li>${icon('file','tiny')}<span>Project-notes.pdf</span><small>4.6 MB</small></li></ul><div class="panel-actions"><button class="btn btn-main" id="accept">Accept file</button><button class="btn" id="decline">Decline</button></div></section>`;break;
+      case 'transferring': central=`<section class="panel"><h2>${transferDirection==='incoming'?'Receiving file':'Sending files'}</h2><p>${transferDirection==='incoming'?'Receiving from MacBook Air. Keep this page open until the transfer finishes.':'Sending to MacBook Air. Keep this page open until the transfer finishes.'}</p><ul class="file-list">${(files.length?files:[{name:'Project-notes.pdf',size:4600000}]).map(f=>`<li>${icon('file','tiny')}<span>${escape(f.name)}</span><small>${readSize(f.size)}</small></li>`).join('')}</ul><div class="progress" aria-label="Transfer progress"><div class="progress-bar" id="bar"></div></div><div class="measure"><span id="percent">0%</span><span>Encrypted transfer</span></div><div class="panel-actions"><button class="cancel-link" id="cancel-xfer">Cancel transfer</button></div></section>`;break;
+      case 'complete': central=`<section class="panel"><div class="result-mark">✓</div><h2>Transfer complete</h2><p>${transferDirection==='incoming'?'Your file was received.':files.length===1?'Your file was delivered.':'Your items were delivered.'} The connection is still open.</p><ul class="file-list">${(files.length?files:[{name:'Project-notes.pdf',size:4600000}]).map(f=>`<li>${icon('file','tiny')}<span>${escape(f.name)}</span><small>${transferDirection==='incoming'?'Received':'Sent'}</small></li>`).join('')}</ul><div class="panel-actions"><button class="btn btn-main" id="again">Send something else</button></div></section>`;break;
+      case 'interrupted': central=`<section class="panel"><h2>Connection interrupted</h2><p>The other device is temporarily unreachable. Bridge would try to reconnect without discarding your transfer.</p><div class="statusbox">Waiting for MacBook Air. No new files can be sent yet.</div><div class="panel-actions"><button class="btn btn-main" id="reconnect">Retry connection</button><button class="cancel-link" id="end-secondary">End session</button></div></section>`;break;
+      case 'receive-link': central=`<section class="panel"><h2>Receive from someone else</h2><p>Create a link that lets another person send you something. Bridge will ask before you accept any files.</p><div class="panel-actions"><button class="btn btn-main" id="receive-copy">Copy guest link</button><button class="cancel-link" id="back">Cancel</button></div></section>`;break;
+    }
+    main.innerHTML=`<div class="connected-screen">${linkHeader()}<div class="connected-grid"><div>${central}</div>${sidebar()}</div></div>`;
+    bind('end',()=>set('waiting')); bind('end-secondary',()=>set('waiting'));bind('reconnect',()=>set('connected'));bind('back',()=>set('connected'));bind('again',()=>{files=[];set('connected')});
+    bind('send-text',()=>set('writing'));bind('request',()=>set('request'));bind('receive',()=>set('receive-link'));bind('receive-copy',()=>notify('Guest receive link is only a demonstration.'));
+    bind('pick',()=>picker.click());
+    bind('send-files',()=>{transferDirection='outgoing';set('transferring')});bind('send-message',()=>{const val=byId('message').value.trim();if(!val){notify('Enter text or a link to send.');return}content=val;files=[{name:'Message',size:val.length}];transferDirection='outgoing';set('transferring')});
+    bind('send-request',()=>{const checked=document.querySelector('input[name="request-type"]:checked');requestChoice=checked?checked.value:'file';set('request-sent')});
+    bind('accept',()=>{files=[{name:'Project-notes.pdf',size:4600000}];transferDirection='incoming';set('transferring')});bind('decline',()=>{notify('Incoming file declined.');set('connected')});bind('cancel-xfer',()=>{notify('Transfer canceled.');set('connected')});
+    if(state==='connected'){
+      const drop=byId('drop-target');
+      ['dragenter','dragover'].forEach(n=>drop.addEventListener(n,e=>{e.preventDefault();drop.classList.add('is-dragover')}));
+      ['dragleave','drop'].forEach(n=>drop.addEventListener(n,e=>{e.preventDefault();drop.classList.remove('is-dragover')}));
+      drop.addEventListener('drop',e=>{const list=[...e.dataTransfer.files];if(list.length){files=list;set('choose')}});
+    }
+    if(state==='transferring'){
+      percent=0;
+      transferTimer=setInterval(()=>{percent=Math.min(100,percent+4+Math.random()*6);const bar=byId('bar');const pct=byId('percent');if(bar)bar.style.width=percent+'%';if(pct)pct.textContent=Math.floor(percent)+'%';if(percent>=100){clearInterval(transferTimer);transferTimer=0;set('complete')}},320)
+    }
+  }
+  function readSize(n){if(n<1024)return n+' B';if(n<1048576)return (n/1024).toFixed(0)+' KB';return (n/1048576).toFixed(1)+' MB'}
+  function bind(id,fn){const e=byId(id);if(e)e.addEventListener('click',fn)}
+  function renderAbout(){main.innerHTML=`<div class="about-panel"><h1>About Bridge</h1><p>Bridge connects two browsers temporarily to send files, text, and links or request something from the other device.</p><p>Its real application uses an end-to-end encrypted peer connection, with a relay if a direct connection is not possible. File offers are approved by the receiving browser.</p><p>This document is a user-interface prototype. It does not create real encrypted sessions or send data to another device.</p><button id="about-back" class="btn btn-main">Back to Bridge</button></div>`;bind('about-back',()=>set('waiting'))}
+  byId('about-btn').addEventListener('click',()=>set('about'));
+  toggle.addEventListener('click',()=>{demoPanel.hidden=!demoPanel.hidden;toggle.setAttribute('aria-expanded',String(!demoPanel.hidden))});
+  demoPanel.addEventListener('click',e=>{const action=e.target.closest('[data-demo]');if(!action)return;files=[];demoPanel.hidden=true;toggle.setAttribute('aria-expanded','false');set(action.dataset.demo)});
+  picker.addEventListener('change',()=>{files=[...picker.files];picker.value='';picker.removeAttribute('accept');if(files.length)set('choose')});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!demoPanel.hidden){demoPanel.hidden=true;toggle.setAttribute('aria-expanded','false')}});
+  render();
+})();
+</script>
+</body></html>
