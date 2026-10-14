@@ -1,7 +1,7 @@
 const CACHE_PREFIX = "bridge-shell-";
 const CACHE_NAME = `${CACHE_PREFIX}v5`;
-const APP_SHELL = "/";
-const IMMUTABLE_ASSET_PREFIX = "/assets/";
+const APP_SHELL = "/Bridge/";
+const IMMUTABLE_ASSET_PREFIX = "/Bridge/assets/";
 const MAX_RUNTIME_ENTRIES = 64;
 const CACHEABLE_DESTINATIONS = new Set(["script", "style", "image", "font"]);
 
