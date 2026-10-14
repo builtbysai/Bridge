@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Bridge">
-  <rect width="512" height="512" rx="116" fill="#0b1020"/>
-  <path d="M116 278c32-80 86-123 140-123s108 43 140 123" fill="none" stroke="#70a9ff" stroke-width="38" stroke-linecap="round"/>
-  <circle cx="116" cy="300" r="38" fill="#ecf3ff"/>
-  <circle cx="396" cy="300" r="38" fill="#ecf3ff"/>
-</svg>
