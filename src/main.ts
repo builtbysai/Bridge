@@ -530,7 +530,9 @@ const enqueueFiles = (files: Iterable<File>) => {
   }
 };
 
-const bridge = new BridgeSession(undefined, {
+let bridge: BridgeSession | null = null;
+try {
+  bridge = new BridgeSession(undefined, {
   onState: setState,
   onRoute: setRoute,
   onChannel: nextChannel => {
@@ -555,7 +557,13 @@ const bridge = new BridgeSession(undefined, {
         });
     }
   }
-});
+  });
+} catch (error) {
+  const message = error instanceof Error ? error.message : "Unknown signaling error";
+  console.error("Bridge pairing service unavailable:", message);
+  document.querySelector<HTMLElement>("#qr-wrap")?.setAttribute("hidden", "");
+  setState("error", "Pairing service is not configured for this deployment.");
+}
 
 for (const button of buttons) {
   button.addEventListener("click", () => {
@@ -689,7 +697,7 @@ dropZone?.addEventListener("drop", event => {
 
 window.addEventListener("beforeunload", () => {
   engine?.close("Page closing");
-  bridge.close();
+  bridge?.close();
 });
 
 void (async () => {
@@ -697,6 +705,8 @@ void (async () => {
     setState("error", pairingError);
     return;
   }
+
+  if (!bridge) return;
 
   try {
     if (isGuest && joiningSession && joiningSecret) await bridge.join(joiningSession, joiningSecret);
