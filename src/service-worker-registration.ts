@@ -7,7 +7,7 @@ export const registerBridgeServiceWorker = async (
   if (!production || !("serviceWorker" in navigator)) return null;
 
   try {
-    return await navigator.serviceWorker.register("/sw.js", {
+    return await navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`, {
       // The worker itself is release control-plane code. Always revalidate it
       // independently of an intermediary HTTP cache when the browser checks
       // for an update.
