@@ -37,6 +37,12 @@ type ConfirmationMessage = {
 
 const AUTH_TIMEOUT_MS = 8_000;
 
+// How long peer creation waits for the worker's TURN credentials before
+// giving up and proceeding STUN-only. The worker sends turn-credentials
+// before any session message, so in practice this resolves in milliseconds;
+// the timeout only matters for old workers or a TURN outage server-side.
+const TURN_GATE_TIMEOUT_MS = 8_000;
+
 export class BridgeSession {
   private readonly signaling: SignalingClient;
   private peer: PeerTransport | null = null;
@@ -46,6 +52,13 @@ export class BridgeSession {
   private sessionId: string | null = null;
   private authenticationFailed = false;
   private signalingIceServers: RTCIceServer[] | null = null;
+  // TURN gate: no RTCPeerConnection is constructed until the worker's TURN
+  // credential status is resolved (credentials received, or known absent
+  // after the timeout). turnAvailable is true/false once resolved.
+  private turnAvailable: boolean | null = null;
+  private turnGate: Promise<void> | null = null;
+  private resolveTurnGate: (() => void) | null = null;
+  private turnGateTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly recovery: RecoveryController;
   private eventQueue: Promise<void> = Promise.resolve();
   private state: BridgeSessionState = "idle";
@@ -74,12 +87,19 @@ export class BridgeSession {
         },
         onState: state => {
           if (state === "exhausted") {
-            this.failSession("Unable to recover the WebRTC connection");
+            // Name the likely cause: without a TURN relay, symmetric NATs
+            // (e.g. a phone on cellular) cannot establish a peer connection.
+            this.failSession(
+              this.turnAvailable === false
+                ? "Unable to recover the WebRTC connection (no TURN relay was available)"
+                : "Unable to recover the WebRTC connection"
+            );
           }
         }
       },
       { maxAttempts: 5, baseDelayMs: 1_000, maxDelayMs: 8_000 }
     );
+    this.resetTurnGate();
   }
 
   async host(secret: string): Promise<void> {
@@ -88,6 +108,7 @@ export class BridgeSession {
     this.pairingSecret = secret;
     this.authenticationFailed = false;
     this.signalingIceServers = null;
+    this.resetTurnGate();
     this.bindSignaling();
     this.emitState("signaling");
     const verifier = await derivePairingVerifier(secret);
@@ -102,11 +123,65 @@ export class BridgeSession {
     this.pairingSecret = secret;
     this.authenticationFailed = false;
     this.signalingIceServers = null;
+    this.resetTurnGate();
     this.bindSignaling();
     this.emitState("signaling");
     const verifier = await derivePairingVerifier(secret);
     await this.signaling.connect();
     this.signaling.joinSession(sessionId, verifier);
+  }
+
+  /**
+   * (Re)arms the TURN gate for a new session attempt. Peer creation waits on
+   * this gate; it resolves when turn-credentials arrive or when the timeout
+   * decides TURN is unavailable. The timeout uses the global setTimeout so
+   * this also works outside a DOM (tests).
+   */
+  private resetTurnGate(): void {
+    this.settleTurnGate();
+    this.turnAvailable = null;
+    this.turnGate = new Promise<void>(resolve => {
+      this.resolveTurnGate = resolve;
+    });
+    this.turnGateTimer = setTimeout(() => {
+      this.turnGateTimer = null;
+      if (this.turnAvailable === null) {
+        // Worker never sent credentials (old worker, or TURN down
+        // server-side): proceed STUN-only instead of hanging forever.
+        this.turnAvailable = false;
+        this.settleTurnGate();
+      }
+    }, TURN_GATE_TIMEOUT_MS);
+  }
+
+  private settleTurnGate(): void {
+    if (this.turnGateTimer) {
+      clearTimeout(this.turnGateTimer);
+      this.turnGateTimer = null;
+    }
+    this.resolveTurnGate?.();
+    this.resolveTurnGate = null;
+  }
+
+  private async waitForTurnCredentials(): Promise<void> {
+    // Explicit constructor iceServers mean the TURN decision was made by the
+    // embedder; nothing to wait for.
+    if (this.iceServers || this.turnAvailable !== null) return;
+    await this.turnGate;
+  }
+
+  /**
+   * Records the worker's TURN credentials. Called synchronously from the
+   * signaling subscription, BEFORE the event is queued: peer creation (in
+   * the queued handlers) waits on the gate this resolves, so resolving it
+   * inside the serialized queue would deadlock.
+   */
+  private onTurnCredentials(event: Extract<SignalingEvent, { type: "turn-credentials" }>): void {
+    if (this.turnAvailable === null) {
+      if (!this.iceServers) this.signalingIceServers = configuredIceServers(event);
+      this.turnAvailable = true;
+    }
+    this.settleTurnGate();
   }
 
   close(): void {
@@ -123,6 +198,7 @@ export class BridgeSession {
     this.cleanupPeer();
     this.unsubscribe?.();
     this.unsubscribe = null;
+    this.settleTurnGate();
     this.signaling.disconnect();
     this.emitState("closed");
   }
@@ -135,6 +211,10 @@ export class BridgeSession {
   private bindSignaling(): void {
     this.unsubscribe?.();
     this.unsubscribe = this.signaling.subscribe(event => {
+      // Snoop turn-credentials outside the serialized queue: the queued
+      // handlers below wait on the TURN gate, so resolving it here (on raw
+      // receipt) is what keeps that wait from deadlocking.
+      if (event.type === "turn-credentials") this.onTurnCredentials(event);
       this.eventQueue = this.eventQueue
         .then(() => this.handleEvent(event))
         .catch(error => {
@@ -153,20 +233,26 @@ export class BridgeSession {
         this.emitState("waiting");
         return;
       case "turn-credentials":
-        if (!this.iceServers) this.signalingIceServers = configuredIceServers(event);
+        // Normally already handled by the pre-queue snoop in bindSignaling;
+        // this keeps direct handleEvent callers (tests) correct too.
+        this.onTurnCredentials(event);
         return;
       case "session-joined":
         this.sessionId = event.sessionId;
         this.events.onSession?.(event.sessionId, event.expiresAt);
         this.emitState("connecting");
+        // Never construct the peer before the TURN status is resolved.
+        await this.waitForTurnCredentials();
         this.ensurePeer(false);
         return;
       case "peer-joined":
         this.emitState("connecting");
+        await this.waitForTurnCredentials();
         this.ensurePeer(true);
         await this.peer?.start();
         return;
       case "signal":
+        await this.waitForTurnCredentials();
         this.ensurePeer(this.role === "host");
         await this.peer?.acceptSignal(event.payload);
         return;
