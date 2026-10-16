@@ -64,10 +64,9 @@
 }
 
 * { box-sizing: border-box; }
-html { min-width: 320px; background: var(--ink); }
+html { background: var(--ink); }
 body {
   margin: 0;
-  min-width: 320px;
   min-height: 100vh;
   min-height: 100dvh;
   color: var(--paper);
@@ -104,7 +103,7 @@ button:focus-visible, input:focus-visible, .drop:focus-visible {
   text-transform: uppercase;
   flex: 0 0 auto;
 }
-.wordmark { color: var(--paper); font-weight: 600; white-space: nowrap; }
+.wordmark { color: var(--paper); font-weight: 600; }
 .wordmark .alpha { color: var(--faint); font-weight: 400; }
 .sesscode {
   margin-left: auto;
