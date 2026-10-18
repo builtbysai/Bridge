@@ -31,6 +31,10 @@ export default defineConfig({
     {
       command: "npm run dev:signal",
       url: "http://127.0.0.1:8787/health",
+      // The suite pairs more devices than the production per-IP defaults
+      // (20 creates / 60 joins per 10 minutes) allow; raise them for this
+      // local, non-production server only.
+      env: { SIGNAL_CREATES_PER_10_MINUTES: "500", SIGNAL_JOINS_PER_10_MINUTES: "500" },
       reuseExistingServer: !process.env.CI,
       timeout: 120_000
     },

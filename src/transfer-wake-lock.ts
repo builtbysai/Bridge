@@ -53,25 +53,3 @@ export class TransferWakeLock {
     }
   }
 }
-
-const transferPanel = document.querySelector<HTMLElement>("#transfer-panel");
-const transferProgress = document.querySelector<HTMLProgressElement>("#transfer-progress");
-
-if (transferPanel && transferProgress) {
-  const lock = new TransferWakeLock();
-  let lastActive = false;
-
-  const sync = () => {
-    const active = !transferPanel.hidden && transferProgress.value < 100;
-    if (active !== lastActive) {
-      lastActive = active;
-      lock.setActive(active);
-    }
-  };
-
-  const observer = new MutationObserver(sync);
-  observer.observe(transferPanel, { attributes: true, attributeFilter: ["hidden"] });
-  window.setInterval(sync, 1000);
-  window.addEventListener("pagehide", () => lock.setActive(false), { once: true });
-  sync();
-}

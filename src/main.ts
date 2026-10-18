@@ -1,5 +1,8 @@
 import QRCode from "qrcode";
-import { displayDeviceName } from "./device-name";
+import { displayDeviceName, loadDeviceName, MAX_DEVICE_NAME_LENGTH, saveDeviceName } from "./device-name";
+import { isRelayOnlyPreferred, setRelayOnlyPreferred } from "./privacy-preference";
+import { ProgressMilestoneAnnouncer } from "./transfer-announcements";
+import { TransferWakeLock } from "./transfer-wake-lock";
 import { BridgeSession, type BridgeSessionState } from "./bridge-session";
 import { deriveSessionKey } from "./crypto";
 import type { ConnectionRoute } from "./peer";
@@ -71,6 +74,7 @@ app.innerHTML = `
     <div class="masthead">
       <span class="wordmark">Bridge <span class="alpha">alpha</span></span>
       <span class="sesscode" id="sesscode" hidden></span>
+      <button type="button" class="gear" id="settings-toggle" aria-expanded="false" aria-controls="settings-panel">Settings</button>
       <span class="lamp" id="lamp" data-state="idle" aria-hidden="true"></span>
     </div>
 
@@ -105,13 +109,13 @@ app.innerHTML = `
       </div>
     </div>
 
-    <section class="panel" id="transfer-panel" hidden aria-live="polite">
+    <section class="panel" id="transfer-panel" hidden>
       <p class="xfer" id="transfer-title">Transfer</p>
       <p class="detail" id="transfer-detail"></p>
-      <div class="xferbar"><i id="xferbar-fill"></i></div>
+      <div class="xferbar" id="xferbar" role="progressbar" aria-labelledby="transfer-title" aria-describedby="transfer-detail" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="xferbar-fill"></i></div>
     </section>
 
-    <section class="panel" id="queue-panel" hidden aria-live="polite">
+    <section class="panel" id="queue-panel" hidden>
       <h2>Queue <span class="detail" id="queue-summary"></span></h2>
       <div class="qlist" id="queue-list"></div>
       <div class="row"><button id="queue-clear" type="button">Clear finished</button></div>
@@ -164,6 +168,29 @@ app.innerHTML = `
         <button type="button" id="compose-cancel">Cancel</button>
       </div>
     </form>
+
+    <section class="panel" id="settings-panel" hidden>
+      <h2>Settings</h2>
+      <form class="setting" id="device-name-form">
+        <label for="device-name-input">Device name</label>
+        <div class="fields">
+          <input id="device-name-input" type="text" maxlength="${MAX_DEVICE_NAME_LENGTH}" autocomplete="off" spellcheck="false" aria-describedby="device-name-help" />
+          <button type="submit">Save</button>
+        </div>
+        <p class="hint" id="device-name-help">Shown to the other device. Stored only in this browser; blank uses an automatic label.</p>
+      </form>
+      <div class="setting">
+        <label class="check" for="relay-only-toggle">
+          <input id="relay-only-toggle" type="checkbox" aria-describedby="relay-only-help relay-only-status" />
+          <span>Relay-only privacy mode</span>
+        </label>
+        <p class="hint" id="relay-only-help">Route everything through the TURN relay so the devices never connect directly and never see each other's network address.</p>
+        <p class="hint" id="relay-only-status" role="status"></p>
+        <div class="row" id="relay-only-actions" hidden><button type="button" id="relay-only-restart">Restart session now</button></div>
+      </div>
+    </section>
+
+    <p class="sr-only" id="transfer-status" role="status" aria-live="polite" aria-atomic="true"></p>
 
     <p class="toast" id="toast" role="status" aria-live="polite" hidden></p>
 
@@ -231,6 +258,16 @@ const composeInput = document.querySelector<HTMLTextAreaElement>("#compose-input
 const composeSubmit = document.querySelector<HTMLButtonElement>("#compose-submit");
 const composeCancel = document.querySelector<HTMLButtonElement>("#compose-cancel");
 const toastEl = document.querySelector<HTMLElement>("#toast");
+const settingsToggle = document.querySelector<HTMLButtonElement>("#settings-toggle");
+const settingsPanel = document.querySelector<HTMLElement>("#settings-panel");
+const deviceNameForm = document.querySelector<HTMLFormElement>("#device-name-form");
+const deviceNameInput = document.querySelector<HTMLInputElement>("#device-name-input");
+const relayToggle = document.querySelector<HTMLInputElement>("#relay-only-toggle");
+const relayStatus = document.querySelector<HTMLElement>("#relay-only-status");
+const relayActions = document.querySelector<HTMLElement>("#relay-only-actions");
+const relayRestart = document.querySelector<HTMLButtonElement>("#relay-only-restart");
+const xferBar = document.querySelector<HTMLElement>("#xferbar");
+const transferStatus = document.querySelector<HTMLElement>("#transfer-status");
 const buttons = [...document.querySelectorAll<HTMLButtonElement>("[data-action]")];
 
 // guest joining: no QR to show — the code is the invitation
@@ -400,6 +437,7 @@ pickerCancel?.addEventListener("click", () => closePicker(null));
 pickerPanel?.addEventListener("keydown", event => { if (event.key === "Escape") closePicker(null); });
 
 const resetTransferState = (reason: string) => {
+  setTransferActive(false);
   closeComposer(null);
   closePicker(null);
   engine?.close(reason);
@@ -452,9 +490,24 @@ const setState = (state: BridgeSessionState, message?: string) => {
   if (noteTitle && note !== undefined) noteTitle.textContent = note;
   if (noteDetail && noteSub !== undefined) noteDetail.textContent = noteSub;
   if (noteActions) noteActions.hidden = state !== "closed" && state !== "error";
-  for (const button of buttons) button.disabled = state !== "connected";
-  if (dropZone) dropZone.setAttribute("aria-disabled", String(state !== "connected"));
+  syncControls();
 };
+
+// Controls are live only while connected AND the browser is online: a
+// transfer can't progress offline, so don't invite one.
+const syncControls = () => {
+  const enabled = sessionState === "connected" && navigator.onLine;
+  for (const button of buttons) button.disabled = !enabled;
+  if (dropZone) dropZone.setAttribute("aria-disabled", String(!enabled));
+};
+window.addEventListener("offline", () => {
+  syncControls();
+  if (sessionState === "connected") notify("You're offline. Transfers are paused until the connection returns.");
+});
+window.addEventListener("online", () => {
+  syncControls();
+  if (sessionState === "connected") notify("Back online.");
+});
 
 const setRoute = (route: ConnectionRoute) => {
   if (!routeLine) return;
@@ -462,11 +515,27 @@ const setRoute = (route: ConnectionRoute) => {
     : route === "relayed" ? "RELAYED \u00b7 ENCRYPTED" : "ENCRYPTED";
 };
 
+const progressAnnouncer = new ProgressMilestoneAnnouncer();
+const wakeLock = new TransferWakeLock();
+// Progress fires many times a second; only touch the lock on a state change.
+let transferActive = false;
+const setTransferActive = (active: boolean) => {
+  if (active === transferActive) return;
+  transferActive = active;
+  wakeLock.setActive(active);
+};
+window.addEventListener("pagehide", () => setTransferActive(false), { once: true });
+
 const showProgress = (name: string, transferred: number, total: number, bytesPerSecond: number) => {
   if (!transferPanel || !transferTitle || !transferDetail || !xferFill) return;
   transferPanel.hidden = false;
   transferTitle.textContent = name;
-  xferFill.style.width = `${total === 0 ? 100 : Math.min(100, (transferred / total) * 100)}%`;
+  const percent = total === 0 ? 100 : Math.min(100, (transferred / total) * 100);
+  xferFill.style.width = `${percent}%`;
+  xferBar?.setAttribute("aria-valuenow", String(Math.floor(percent)));
+  const milestone = progressAnnouncer.update(name, name, percent);
+  if (milestone && transferStatus) transferStatus.textContent = milestone;
+  setTransferActive(percent < 100);
   transferDetail.textContent = `${formatBytes(transferred)} / ${formatBytes(total)} · ${formatBytes(bytesPerSecond)}/s`;
 };
 
@@ -677,12 +746,14 @@ const attachTransferEngine = async () => {
         transferOffers.delete(transferId);
         transferNames.delete(transferId);
       }
+      setTransferActive(false);
       notify(`Transfer failed: ${error.message}`);
     },
     onCancelled: (transferId, reason) => {
       if (pendingOffer?.transferId === transferId) hideIncomingOffer(true);
       transferOffers.delete(transferId);
       transferNames.delete(transferId);
+      setTransferActive(false);
       notify(reason ?? "Transfer cancelled");
     },
     onPeerHello: name => {
@@ -905,6 +976,44 @@ document.addEventListener("paste", event => {
     .then(() => notify("Pasted text sent."))
     .catch(error => notify(`Unable to send: ${error instanceof Error ? error.message : "Unknown error"}`));
 });
+
+// settings: device name + relay-only privacy mode
+settingsToggle?.addEventListener("click", () => {
+  const open = settingsPanel?.hidden ?? false;
+  if (settingsPanel) settingsPanel.hidden = !open;
+  settingsToggle.setAttribute("aria-expanded", String(open));
+  if (open && deviceNameInput) {
+    deviceNameInput.value = loadDeviceName();
+    deviceNameInput.placeholder = displayDeviceName();
+    deviceNameInput.focus();
+  }
+});
+settingsPanel?.addEventListener("keydown", event => {
+  if (event.key !== "Escape") return;
+  settingsPanel.hidden = true;
+  settingsToggle?.setAttribute("aria-expanded", "false");
+  settingsToggle?.focus();
+});
+deviceNameForm?.addEventListener("submit", event => {
+  event.preventDefault();
+  const saved = saveDeviceName(deviceNameInput?.value ?? "");
+  const name = displayDeviceName();
+  if (peerlineLocal) peerlineLocal.textContent = name.toUpperCase();
+  engine?.announcePresence(name);
+  notify(saved ? `Device name saved as ${saved}.` : "Using the automatic device name.");
+});
+if (relayToggle) relayToggle.checked = isRelayOnlyPreferred();
+relayToggle?.addEventListener("change", () => {
+  setRelayOnlyPreferred(relayToggle.checked);
+  if (relayStatus) {
+    relayStatus.textContent = relayToggle.checked
+      ? "Saved. Relay-only applies to the next session."
+      : "Saved. Direct connections are allowed from the next session.";
+  }
+  // A guest's pairing link is single-use, so only a host can restart in place.
+  if (relayActions) relayActions.hidden = isGuest;
+});
+relayRestart?.addEventListener("click", () => window.location.reload());
 
 window.addEventListener("beforeunload", () => {
   engine?.close("Page closing");
