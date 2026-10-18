@@ -437,7 +437,7 @@ pickerCancel?.addEventListener("click", () => closePicker(null));
 pickerPanel?.addEventListener("keydown", event => { if (event.key === "Escape") closePicker(null); });
 
 const resetTransferState = (reason: string) => {
-  wakeLock.setActive(false);
+  setTransferActive(false);
   closeComposer(null);
   closePicker(null);
   engine?.close(reason);
@@ -517,7 +517,14 @@ const setRoute = (route: ConnectionRoute) => {
 
 const progressAnnouncer = new ProgressMilestoneAnnouncer();
 const wakeLock = new TransferWakeLock();
-window.addEventListener("pagehide", () => wakeLock.setActive(false), { once: true });
+// Progress fires many times a second; only touch the lock on a state change.
+let transferActive = false;
+const setTransferActive = (active: boolean) => {
+  if (active === transferActive) return;
+  transferActive = active;
+  wakeLock.setActive(active);
+};
+window.addEventListener("pagehide", () => setTransferActive(false), { once: true });
 
 const showProgress = (name: string, transferred: number, total: number, bytesPerSecond: number) => {
   if (!transferPanel || !transferTitle || !transferDetail || !xferFill) return;
@@ -528,7 +535,7 @@ const showProgress = (name: string, transferred: number, total: number, bytesPer
   xferBar?.setAttribute("aria-valuenow", String(Math.floor(percent)));
   const milestone = progressAnnouncer.update(name, name, percent);
   if (milestone && transferStatus) transferStatus.textContent = milestone;
-  wakeLock.setActive(percent < 100);
+  setTransferActive(percent < 100);
   transferDetail.textContent = `${formatBytes(transferred)} / ${formatBytes(total)} · ${formatBytes(bytesPerSecond)}/s`;
 };
 
@@ -739,14 +746,14 @@ const attachTransferEngine = async () => {
         transferOffers.delete(transferId);
         transferNames.delete(transferId);
       }
-      wakeLock.setActive(false);
+      setTransferActive(false);
       notify(`Transfer failed: ${error.message}`);
     },
     onCancelled: (transferId, reason) => {
       if (pendingOffer?.transferId === transferId) hideIncomingOffer(true);
       transferOffers.delete(transferId);
       transferNames.delete(transferId);
-      wakeLock.setActive(false);
+      setTransferActive(false);
       notify(reason ?? "Transfer cancelled");
     },
     onPeerHello: name => {
