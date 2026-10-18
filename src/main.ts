@@ -3,6 +3,7 @@ import { displayDeviceName, loadDeviceName, MAX_DEVICE_NAME_LENGTH, saveDeviceNa
 import { isRelayOnlyPreferred, setRelayOnlyPreferred } from "./privacy-preference";
 import { ProgressMilestoneAnnouncer } from "./transfer-announcements";
 import { TransferWakeLock } from "./transfer-wake-lock";
+import { parsePairingUrl, scanQrCode, ScanError, SECRET_PATTERN, SESSION_PATTERN } from "./qr-scanner";
 import { BridgeSession, type BridgeSessionState } from "./bridge-session";
 import { deriveSessionKey } from "./crypto";
 import type { ConnectionRoute } from "./peer";
@@ -14,9 +15,6 @@ import "./style.css";
 
 const app = document.querySelector<HTMLDivElement>("#app");
 if (!app) throw new Error("Missing #app");
-
-const SESSION_PATTERN = /^[a-f0-9]{12}$/i;
-const SECRET_PATTERN = /^[a-f0-9]{64}$/i;
 
 const randomSecret = (): string => {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
@@ -84,6 +82,7 @@ app.innerHTML = `
         <p class="ask" id="ask">Scan with your other device.</p>
         <p class="code" id="session-code">SESSION <strong>&middot;&middot;&middot;&middot;</strong></p>
         <div class="invite-actions" id="invite-actions" hidden>
+          <button type="button" id="invite-scan">Scan to join</button>
           <button type="button" id="invite-copy">Copy invite link</button>
           <p class="hint">No camera? Send this link to the other device.</p>
         </div>
@@ -249,6 +248,7 @@ const queueSummary = document.querySelector<HTMLElement>("#queue-summary");
 const queueClear = document.querySelector<HTMLButtonElement>("#queue-clear");
 const inviteActions = document.querySelector<HTMLElement>("#invite-actions");
 const inviteCopy = document.querySelector<HTMLButtonElement>("#invite-copy");
+const inviteScan = document.querySelector<HTMLButtonElement>("#invite-scan");
 const receivedOpen = document.querySelector<HTMLAnchorElement>("#received-open");
 const pickerPanel = document.querySelector<HTMLElement>("#picker-panel");
 const pickerCancel = document.querySelector<HTMLButtonElement>("#picker-cancel");
@@ -908,6 +908,31 @@ receivedCopy?.addEventListener("click", () => {
 
 inviteCopy?.addEventListener("click", () => {
   if (pairingUrl) void copyText(pairingUrl.toString(), "Invite link copied. Open it on the other device.", "Copy this invite link");
+});
+
+inviteScan?.addEventListener("click", () => {
+  void (async () => {
+    let text: string | null;
+    try {
+      text = await scanQrCode();
+    } catch (error) {
+      const message = error instanceof ScanError ? error.message : "The camera could not be started.";
+      notify(message);
+      return;
+    }
+    if (!text) return; // user cancelled
+    const invite = parsePairingUrl(text);
+    if (!invite) {
+      notify("That QR code is not a Bridge invite.");
+      return;
+    }
+    const url = new URL(window.location.href);
+    url.search = "";
+    url.hash = "";
+    url.searchParams.set("session", invite.session);
+    url.hash = `key=${invite.secret}`;
+    window.location.href = url.toString();
+  })();
 });
 
 fileInput?.addEventListener("change", () => {

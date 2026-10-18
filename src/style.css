@@ -454,3 +454,63 @@ button:focus-visible, input:focus-visible, .drop:focus-visible {
   .ask { font-size: 18px; }
   .panel .row button, .panel .row .btn { flex: 1 1 100%; justify-content: center; }
 }
+
+/* QR scanner overlay */
+.scan-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  grid-template-rows: 1fr auto auto auto;
+  justify-items: center;
+  align-items: center;
+  gap: 14px;
+  padding: 32px 24px;
+  background: rgba(4, 6, 10, 0.96);
+}
+.scan-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.55;
+}
+.scan-frame {
+  position: relative;
+  width: min(68vw, 300px);
+  aspect-ratio: 1;
+  border: 2px solid var(--paper);
+  border-radius: 12px;
+  box-shadow: 0 0 0 4000px rgba(4, 6, 10, 0.55);
+}
+.scan-hint {
+  position: relative;
+  margin: 0;
+  font-size: 16px;
+  color: var(--paper);
+}
+.scan-error {
+  position: relative;
+  margin: 0;
+  max-width: 320px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--red);
+}
+.scan-cancel {
+  position: relative;
+  min-height: 48px;
+  padding: 12px 28px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: #11161e;
+  color: var(--paper);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+}
+@media (forced-colors: active) {
+  .scan-frame { border-color: CanvasText; box-shadow: none; }
+  .scan-cancel { border-color: CanvasText; }
+}
