@@ -80,6 +80,10 @@ app.innerHTML = `
         <div class="qr" id="qr-wrap"><canvas id="qr" width="232" height="232"></canvas></div>
         <p class="ask" id="ask">Scan with your other device.</p>
         <p class="code" id="session-code">SESSION <strong>&middot;&middot;&middot;&middot;</strong></p>
+        <div class="invite-actions" id="invite-actions" hidden>
+          <button type="button" id="invite-copy">Copy invite link</button>
+          <p class="hint">No camera? Send this link to the other device.</p>
+        </div>
       </div>
       <div id="link-block" hidden>
         <p class="peerline"><span id="peerline-local">THIS DEVICE</span> <strong>&larr;&rarr;</strong> <span id="peerline-peer">PAIRED DEVICE</span></p>
@@ -136,8 +140,33 @@ app.innerHTML = `
     <section class="panel" id="received-panel" hidden aria-live="polite">
       <h2 id="received-title">Received</h2>
       <pre id="received-content"></pre>
-      <div class="row"><button id="received-copy">Copy</button></div>
+      <div class="row">
+        <button id="received-copy">Copy</button>
+        <a class="btn" id="received-open" href="#" target="_blank" rel="noopener noreferrer" hidden>Open link</a>
+      </div>
     </section>
+
+    <section class="panel" id="picker-panel" hidden>
+      <h2>What do you want from the other device?</h2>
+      <div class="row" id="picker-options">
+        <button type="button" data-request-kind="file">A file</button>
+        <button type="button" data-request-kind="text">Text</button>
+        <button type="button" data-request-kind="link">A link</button>
+        <button type="button" data-request-kind="clipboard">Their clipboard</button>
+        <button type="button" id="picker-cancel">Cancel</button>
+      </div>
+    </section>
+
+    <form class="panel" id="compose-panel" hidden>
+      <h2 id="compose-title">Compose</h2>
+      <textarea id="compose-input" rows="4" spellcheck="false" aria-labelledby="compose-title"></textarea>
+      <div class="row">
+        <button type="submit" class="primary" id="compose-submit">Send</button>
+        <button type="button" id="compose-cancel">Cancel</button>
+      </div>
+    </form>
+
+    <p class="toast" id="toast" role="status" aria-live="polite" hidden></p>
 
     <div class="statusline">
       <span><span class="st" id="st" data-state="idle">READY</span> &middot; <span id="st-sub">WAITING TO START</span></span>
@@ -192,6 +221,17 @@ const queuePanel = document.querySelector<HTMLElement>("#queue-panel");
 const queueList = document.querySelector<HTMLElement>("#queue-list");
 const queueSummary = document.querySelector<HTMLElement>("#queue-summary");
 const queueClear = document.querySelector<HTMLButtonElement>("#queue-clear");
+const inviteActions = document.querySelector<HTMLElement>("#invite-actions");
+const inviteCopy = document.querySelector<HTMLButtonElement>("#invite-copy");
+const receivedOpen = document.querySelector<HTMLAnchorElement>("#received-open");
+const pickerPanel = document.querySelector<HTMLElement>("#picker-panel");
+const pickerCancel = document.querySelector<HTMLButtonElement>("#picker-cancel");
+const composePanel = document.querySelector<HTMLFormElement>("#compose-panel");
+const composeTitle = document.querySelector<HTMLElement>("#compose-title");
+const composeInput = document.querySelector<HTMLTextAreaElement>("#compose-input");
+const composeSubmit = document.querySelector<HTMLButtonElement>("#compose-submit");
+const composeCancel = document.querySelector<HTMLButtonElement>("#compose-cancel");
+const toastEl = document.querySelector<HTMLElement>("#toast");
 const buttons = [...document.querySelectorAll<HTMLButtonElement>("[data-action]")];
 
 // guest joining: no QR to show — the code is the invitation
@@ -212,6 +252,7 @@ let keyPromise: Promise<CryptoKey> | null = null;
 let pairingUrl: URL | null = null;
 let pendingRequest: IncomingRequest | null = null;
 let outgoingRequestId: string | null = null;
+let outgoingRequestKind: TransferKind | null = null;
 let pendingOffer: IncomingTransfer | null = null;
 let pendingFileRequest = false;
 let activeQueueProgress: ((progress: TransferProgress) => void) | null = null;
@@ -281,13 +322,94 @@ queueList?.addEventListener("click", event => {
 });
 queueClear?.addEventListener("click", () => queue.clearFinished());
 
+// Inline replacements for window.alert / window.prompt: native dialogs block
+// the page, look foreign on phones, and (for prompt) force the user to type
+// a keyword like "file" just to make a request.
+let toastTimer: number | undefined;
+const notify = (message: string) => {
+  if (!toastEl) return;
+  toastEl.textContent = message;
+  toastEl.hidden = false;
+  window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => { toastEl.hidden = true; }, 6_000);
+};
+
+// Clipboard writes fail without permission or on insecure origins; fall back
+// to showing the text selected so it can still be copied by hand.
+const copyText = async (value: string, success: string, fallbackTitle: string) => {
+  try {
+    await navigator.clipboard.writeText(value);
+    notify(success);
+  } catch {
+    await openComposer(fallbackTitle, { value, submitLabel: "Done", readOnly: true });
+  }
+};
+
+let composeResolve: ((value: string | null) => void) | null = null;
+const closeComposer = (value: string | null) => {
+  if (composePanel) composePanel.hidden = true;
+  const resolve = composeResolve;
+  composeResolve = null;
+  resolve?.(value);
+};
+const openComposer = (title: string, options: { value?: string; submitLabel?: string; readOnly?: boolean } = {}): Promise<string | null> => {
+  closeComposer(null);
+  if (!composePanel || !composeInput || !composeTitle || !composeSubmit) return Promise.resolve(null);
+  composeTitle.textContent = title;
+  composeInput.value = options.value ?? "";
+  composeInput.readOnly = options.readOnly ?? false;
+  composeSubmit.textContent = options.submitLabel ?? "Send";
+  composePanel.hidden = false;
+  composeInput.focus();
+  if (options.value) composeInput.select();
+  return new Promise(resolve => { composeResolve = resolve; });
+};
+composePanel?.addEventListener("submit", event => {
+  event.preventDefault();
+  const value = composeInput?.value ?? "";
+  if (!composeInput?.readOnly && value.trim().length === 0) {
+    composeInput?.focus();
+    return;
+  }
+  closeComposer(value);
+});
+composeCancel?.addEventListener("click", () => closeComposer(null));
+composeInput?.addEventListener("keydown", event => {
+  if (event.key === "Escape") closeComposer(null);
+  else if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) composePanel?.requestSubmit();
+});
+
+let pickerResolve: ((kind: TransferKind | null) => void) | null = null;
+const closePicker = (kind: TransferKind | null) => {
+  if (pickerPanel) pickerPanel.hidden = true;
+  const resolve = pickerResolve;
+  pickerResolve = null;
+  resolve?.(kind);
+};
+const askRequestKind = (): Promise<TransferKind | null> => {
+  closePicker(null);
+  if (!pickerPanel) return Promise.resolve(null);
+  pickerPanel.hidden = false;
+  pickerPanel.querySelector<HTMLButtonElement>("button")?.focus();
+  return new Promise(resolve => { pickerResolve = resolve; });
+};
+pickerPanel?.addEventListener("click", event => {
+  const kind = (event.target as HTMLElement).closest<HTMLElement>("[data-request-kind]")?.dataset.requestKind;
+  if (kind) closePicker(kind as TransferKind);
+});
+pickerCancel?.addEventListener("click", () => closePicker(null));
+pickerPanel?.addEventListener("keydown", event => { if (event.key === "Escape") closePicker(null); });
+
 const resetTransferState = (reason: string) => {
+  closeComposer(null);
+  closePicker(null);
   engine?.close(reason);
   engine = null;
   channel = null;
   pendingOffer = null;
   pendingRequest = null;
   outgoingRequestId = null;
+  outgoingRequestKind = null;
   pendingFileRequest = false;
   activeQueueProgress = null;
   transferNames.clear();
@@ -367,6 +489,18 @@ const showReceivedText = async (offer: IncomingTransfer, blob: Blob) => {
   receivedPanel.hidden = false;
   receivedTitle.textContent = offer.kind === "link" ? "Received link" : offer.kind === "clipboard" ? "Received clipboard" : "Received text";
   receivedContent.textContent = text;
+  if (receivedOpen) {
+    // The text comes from the other device: only offer http(s) links.
+    let href: string | null = null;
+    if (offer.kind === "link") {
+      try {
+        const parsed = new URL(text.trim());
+        if (parsed.protocol === "https:" || parsed.protocol === "http:") href = parsed.href;
+      } catch { /* not a URL: copy-only */ }
+    }
+    receivedOpen.hidden = href === null;
+    if (href) receivedOpen.href = href;
+  }
 };
 
 const requestLabel = (kind: TransferKind): string => {
@@ -396,13 +530,23 @@ const presentIncomingOffer = (offer: IncomingTransfer) => {
     return;
   }
 
-  pendingOffer = offer;
-  transferNames.set(offer.transferId, offer.name);
-  transferOffers.set(offer.transferId, offer);
+  // Something we just asked for arriving is already consented to: skip the
+  // "Accept?" prompt for small text-like content. Files still ask, because
+  // the receiver chooses where they are saved.
+  const answersRequest = outgoingRequestId !== null && outgoingRequestKind === offer.kind
+    && offer.kind !== "file" && offer.size <= DEFAULT_MAX_MEMORY_RECEIVE_BYTES;
   if (outgoingRequestId) {
     outgoingRequestId = null;
+    outgoingRequestKind = null;
     if (requestPanel) requestPanel.hidden = true;
   }
+  transferNames.set(offer.transferId, offer.name);
+  transferOffers.set(offer.transferId, offer);
+  if (answersRequest) {
+    engine?.accept(offer.transferId);
+    return;
+  }
+  pendingOffer = offer;
 
   const canReceiveInMemory = offer.size <= DEFAULT_MAX_MEMORY_RECEIVE_BYTES;
   const canStreamToDisk = offer.kind === "file" && FileSystemReceiveSink.isSupported();
@@ -438,7 +582,7 @@ const sendTextValue = async (value: string, kind: Exclude<TransferKind, "file">)
 
 const fulfillTextRequest = async (request: IncomingRequest) => {
   const promptLabel = request.kind === "link" ? "Paste the link to send" : request.kind === "clipboard" ? "Paste text to send" : "Enter text to send";
-  const value = window.prompt(promptLabel);
+  const value = await openComposer(promptLabel);
   if (value === null) {
     engine?.declineRequest(request.requestId, "Request cancelled");
     return;
@@ -454,7 +598,7 @@ const sendTextLike = async (kind: Exclude<TransferKind, "file">) => {
   }
   if (value === null || (kind === "clipboard" && value.length === 0)) {
     const label = kind === "link" ? "Paste the link to send" : kind === "clipboard" ? "Paste text to send" : "Enter text to send";
-    value = window.prompt(label);
+    value = await openComposer(label);
   }
   if (value === null) return;
   await sendTextValue(value, kind);
@@ -486,9 +630,10 @@ const attachTransferEngine = async () => {
     onRequestDeclined: (requestId, reason) => {
       if (outgoingRequestId === requestId) {
         outgoingRequestId = null;
+        outgoingRequestKind = null;
         if (requestPanel) requestPanel.hidden = true;
       }
-      window.alert(reason ?? "The other device declined your request.");
+      notify(reason ?? "The other device declined your request.");
     },
     onProgress: progress => {
       const inbound = transferOffers.has(progress.transferId);
@@ -522,13 +667,13 @@ const attachTransferEngine = async () => {
         transferOffers.delete(transferId);
         transferNames.delete(transferId);
       }
-      window.alert(`Transfer failed: ${error.message}`);
+      notify(`Transfer failed: ${error.message}`);
     },
     onCancelled: (transferId, reason) => {
       if (pendingOffer?.transferId === transferId) hideIncomingOffer(true);
       transferOffers.delete(transferId);
       transferNames.delete(transferId);
-      window.alert(reason ?? "Transfer cancelled");
+      notify(reason ?? "Transfer cancelled");
     },
     onPeerHello: name => {
       const clean = name.trim().toUpperCase().slice(0, 48);
@@ -542,7 +687,7 @@ const enqueueFiles = (files: Iterable<File>) => {
   const list = Array.from(files);
   if (list.length === 0) return;
   if (!engine || sessionState !== "connected") {
-    window.alert("Connect another device before sending files.");
+    notify("Connect another device before sending files.");
     return;
   }
   queue.enqueue(list);
@@ -567,12 +712,19 @@ const bridge = new BridgeSession(undefined, {
     if (sesscode) { sesscode.textContent = sessionId.toUpperCase(); sesscode.hidden = false; }
     if (stExp) stExp.textContent = `EXPIRES ${new Date(expiresAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toUpperCase()}`;
     if (!isGuest && canvas) {
+      if (inviteActions) inviteActions.hidden = false;
       pairingUrl = new URL(window.location.href);
       pairingUrl.search = "";
       pairingUrl.hash = "";
       pairingUrl.searchParams.set("session", sessionId);
       pairingUrl.hash = `key=${sessionSecret}`;
-      void QRCode.toCanvas(canvas, pairingUrl.toString(), { width: 264, margin: 1, color: { dark: "#07101f", light: "#f7fbff" } })
+      void QRCode.toCanvas(canvas, pairingUrl.toString(), { width: 264, margin: 1, color: { dark: "#07101f", light: "#ffffff" } })
+        .then(() => {
+          // qrcode sets inline px sizes that override the responsive CSS and
+          // leave the code off-centre in its frame.
+          canvas.style.width = "";
+          canvas.style.height = "";
+        })
         .catch(error => {
           console.error("Unable to render Bridge pairing QR", error);
           if (noteTitle) { showBlock("note-block"); noteTitle.textContent = "Session ready, but the QR could not be rendered."; }
@@ -592,30 +744,26 @@ for (const button of buttons) {
     }
     if (action === "send-text" || action === "send-link" || action === "send-clipboard") {
       const kind = action === "send-link" ? "link" : action === "send-clipboard" ? "clipboard" : "text";
-      void sendTextLike(kind).catch(error => window.alert(`Unable to send: ${error instanceof Error ? error.message : "Unknown error"}`));
+      void sendTextLike(kind).catch(error => notify(`Unable to send: ${error instanceof Error ? error.message : "Unknown error"}`));
       return;
     }
     if (action === "request") {
       if (!engine || outgoingRequestId) return;
-      const raw = window.prompt("What do you want from the connected device?\n\nEnter: file, text, link, or clipboard", "file")?.trim().toLowerCase();
-      if (!raw) return;
-      if (!["file", "text", "link", "clipboard"].includes(raw)) {
-        window.alert("Choose file, text, link, or clipboard.");
-        return;
-      }
-      outgoingRequestId = engine.request(raw as TransferKind);
-      if (requestPanel && requestTitle && requestDetail) {
-        requestPanel.hidden = false;
-        requestTitle.textContent = "Request sent";
-        requestDetail.textContent = `Waiting for ${requestLabel(raw as TransferKind)} from the connected device.`;
-      }
+      void askRequestKind().then(kind => {
+        if (!kind || !engine || outgoingRequestId) return;
+        outgoingRequestId = engine.request(kind);
+        outgoingRequestKind = kind;
+        if (requestPanel && requestTitle && requestDetail) {
+          requestPanel.hidden = false;
+          requestTitle.textContent = "Request sent";
+          requestDetail.textContent = `Waiting for ${requestLabel(kind)} from the connected device.`;
+        }
+      });
       return;
     }
     if (action === "receive" && pairingUrl) {
-      const receiveUrl = createReceivePortalUrl(pairingUrl);
-      void navigator.clipboard.writeText(receiveUrl.toString())
-        .then(() => window.alert("Receive Portal link copied. It expires with this session."))
-        .catch(() => window.prompt("Copy this Receive Portal link", receiveUrl.toString()));
+      const receiveUrl = createReceivePortalUrl(pairingUrl).toString();
+      void copyText(receiveUrl, "Receive link copied. It expires with this session.", "Copy this receive link");
     }
   });
 }
@@ -630,7 +778,7 @@ incomingSave?.addEventListener("click", () => {
       hideIncomingOffer();
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
-      window.alert(`Unable to open a save destination: ${error instanceof Error ? error.message : "Unknown error"}`);
+      notify(`Unable to open a save destination: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
   })();
 });
@@ -639,7 +787,7 @@ incomingMemory?.addEventListener("click", () => {
   const offer = pendingOffer;
   if (!offer || !engine) return;
   if (offer.size > DEFAULT_MAX_MEMORY_RECEIVE_BYTES) {
-    window.alert("This transfer is too large to receive safely in browser memory. Save it directly to disk in a supported browser.");
+    notify("This transfer is too large to receive safely in browser memory. Save it directly to disk in a supported browser.");
     return;
   }
   engine.accept(offer.transferId);
@@ -663,7 +811,7 @@ requestFulfill?.addEventListener("click", () => {
   }
   if (requestPanel) requestPanel.hidden = true;
   pendingRequest = null;
-  void fulfillTextRequest(request).catch(error => window.alert(`Unable to fulfill request: ${error instanceof Error ? error.message : "Unknown error"}`));
+  void fulfillTextRequest(request).catch(error => notify(`Unable to fulfill request: ${error instanceof Error ? error.message : "Unknown error"}`));
 });
 
 requestDecline?.addEventListener("click", () => {
@@ -674,8 +822,11 @@ requestDecline?.addEventListener("click", () => {
 });
 
 receivedCopy?.addEventListener("click", () => {
-  const value = receivedContent?.textContent ?? "";
-  void navigator.clipboard.writeText(value).catch(() => undefined);
+  void copyText(receivedContent?.textContent ?? "", "Copied.", "Copy this text");
+});
+
+inviteCopy?.addEventListener("click", () => {
+  if (pairingUrl) void copyText(pairingUrl.toString(), "Invite link copied. Open it on the other device.", "Copy this invite link");
 });
 
 fileInput?.addEventListener("change", () => {
