@@ -52,7 +52,7 @@
   --ink: #0b0e13;
   --paper: #f2efe8;
   --muted: #8b93a3;
-  --faint: #4d5462;
+  --faint: #7a8291;
   --amber: #f5c563;
   --green: #6ee7b7;
   --red: #ff8a9a;
@@ -112,6 +112,27 @@ button:focus-visible, input:focus-visible, .drop:focus-visible {
   letter-spacing: 0.22em;
   white-space: nowrap;
 }
+.gear {
+  background: none; border: 0; padding: 4px 0;
+  color: var(--muted); font: inherit; letter-spacing: inherit; text-transform: inherit;
+  cursor: pointer;
+}
+.gear:hover, .gear[aria-expanded="true"] { color: var(--paper); }
+.sesscode[hidden] + .gear { margin-left: auto; }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.setting { margin: 0 0 22px; }
+.setting label { display: block; margin-bottom: 8px; font-size: 14px; font-weight: 500; }
+.setting .fields { display: flex; gap: 10px; }
+.setting input[type="text"] {
+  flex: 1; min-width: 0; min-height: 48px; padding: 0 14px;
+  border: 1px solid var(--line-strong); border-radius: 4px;
+  background: #080b10; color: var(--paper); font: 14px var(--font-mono);
+}
+.setting input[type="text"]:focus-visible { outline: 2px solid var(--paper); outline-offset: 2px; }
+.setting .check { display: flex; align-items: center; gap: 12px; min-height: 44px; cursor: pointer; }
+.setting .check input { width: 20px; height: 20px; accent-color: var(--green); }
+.setting .hint { margin: 6px 0 0; line-height: 1.5; }
+.setting .row { margin-top: 12px; }
 .lamp {
   width: 8px; height: 8px; border-radius: 50%;
   background: var(--amber);
