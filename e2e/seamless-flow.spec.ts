@@ -65,3 +65,52 @@ test("pairs via copied invite link and completes a request without native dialog
   await guestContext.close();
   await hostContext.close();
 });
+
+test("both devices can send text, links and pasted content; drops outside the zone don't navigate", async ({ browser }) => {
+  const hostContext = await browser.newContext();
+  const guestContext = await browser.newContext();
+  const host = await hostContext.newPage();
+  const guest = await guestContext.newPage();
+  await host.goto("/");
+  await host.waitForSelector("#invite-copy:not([hidden])");
+  await hostContext.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await host.locator("#invite-copy").click();
+  await guest.goto(await host.evaluate(() => navigator.clipboard.readText()));
+  await live(host);
+  await live(guest);
+
+  // The host (not just a receive portal) can send text; a URL becomes a link.
+  await host.locator('[data-action="send-text"]').click();
+  await host.locator("#compose-input").fill("https://example.com/from-host");
+  await host.locator("#compose-submit").click();
+  await guest.locator("#incoming-memory").click();
+  await expect(guest.locator("#received-title")).toHaveText("Received link");
+  await expect(guest.locator("#received-open")).toHaveAttribute("href", "https://example.com/from-host");
+
+  // Plain text from the guest side.
+  await guest.locator('[data-action="send-text"]').click();
+  await guest.locator("#compose-input").fill("two words");
+  await guest.locator("#compose-submit").click();
+  await host.locator("#incoming-memory").click();
+  await expect(host.locator("#received-title")).toHaveText("Received text");
+
+  // Pasting outside any input sends the text.
+  await host.evaluate(() => {
+    const data = new DataTransfer();
+    data.setData("text/plain", "pasted note");
+    document.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+  });
+  await guest.locator("#incoming-memory").click();
+  await expect(guest.locator("#received-content")).toHaveText("pasted note");
+
+  // A drop that misses the drop zone is swallowed instead of navigating away.
+  const prevented = await host.evaluate(() => {
+    const event = new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: new DataTransfer() });
+    document.body.dispatchEvent(event);
+    return event.defaultPrevented;
+  });
+  expect(prevented).toBe(true);
+
+  await guestContext.close();
+  await hostContext.close();
+});

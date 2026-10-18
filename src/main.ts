@@ -54,17 +54,16 @@ const isGuest = !pairingError && Boolean(joiningSession && joiningSecret);
 const isReceivePortal = isGuest && isReceivePortalUrl(currentUrl);
 const sessionSecret = joiningSecret ?? randomSecret();
 
-const primaryActions = isReceivePortal
-  ? `
+// Both devices are equal peers: anything one can send, the other can too.
+// Only the receive-portal page is send-only, and only the host can mint a
+// receive link.
+const primaryActions = `
       <button data-action="send" disabled>Send files</button>
-      <button data-action="send-text" disabled>Send text</button>
-      <button data-action="send-link" disabled>Send a link</button>
+      <button data-action="send-text" disabled>Send text or a link</button>
       <button data-action="send-clipboard" disabled>Send clipboard</button>
-    `
-  : `
-      <button data-action="send" disabled>Send files</button>
+      ${isReceivePortal ? "" : `
       <button data-action="request" disabled>Request something</button>
-      <button data-action="receive" disabled>Copy receive link</button>
+      <button data-action="receive" disabled>Copy receive link</button>`}
     `;
 
 app.innerHTML = `
@@ -590,18 +589,29 @@ const fulfillTextRequest = async (request: IncomingRequest) => {
   await sendTextValue(value, request.kind as Exclude<TransferKind, "file">);
 };
 
-const sendTextLike = async (kind: Exclude<TransferKind, "file">) => {
+const kindForText = (value: string): "text" | "link" => {
+  const trimmed = value.trim();
+  if (/\s/.test(trimmed)) return "text";
+  try {
+    const url = new URL(trimmed);
+    return url.protocol === "https:" || url.protocol === "http:" ? "link" : "text";
+  } catch {
+    return "text";
+  }
+};
+
+const sendTextLike = async (kind: "text" | "clipboard") => {
   if (!engine) return;
   let value: string | null = null;
   if (kind === "clipboard" && navigator.clipboard?.readText) {
     try { value = await navigator.clipboard.readText(); } catch { value = null; }
   }
   if (value === null || (kind === "clipboard" && value.length === 0)) {
-    const label = kind === "link" ? "Paste the link to send" : kind === "clipboard" ? "Paste text to send" : "Enter text to send";
-    value = await openComposer(label);
+    value = await openComposer(kind === "clipboard" ? "Paste text to send" : "Text or link to send");
   }
   if (value === null) return;
-  await sendTextValue(value, kind);
+  await sendTextValue(value, kind === "clipboard" ? "clipboard" : kindForText(value));
+  notify("Sent.");
 };
 
 const attachTransferEngine = async () => {
@@ -742,8 +752,8 @@ for (const button of buttons) {
       fileInput?.click();
       return;
     }
-    if (action === "send-text" || action === "send-link" || action === "send-clipboard") {
-      const kind = action === "send-link" ? "link" : action === "send-clipboard" ? "clipboard" : "text";
+    if (action === "send-text" || action === "send-clipboard") {
+      const kind = action === "send-clipboard" ? "clipboard" : "text";
       void sendTextLike(kind).catch(error => notify(`Unable to send: ${error instanceof Error ? error.message : "Unknown error"}`));
       return;
     }
@@ -861,6 +871,39 @@ dropZone?.addEventListener("drop", event => {
   setDropActive(false);
   if (sessionState !== "connected" || !event.dataTransfer) return;
   enqueueFiles(filesFromDrop(event.dataTransfer));
+});
+
+// Paste or drop anywhere on the page, not just on the drop zone. Without the
+// window-level dragover/drop handlers a missed drop navigates the tab away
+// to the file, abandoning the session.
+const isEditable = (target: EventTarget | null) =>
+  target instanceof HTMLElement && (target.isContentEditable || target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement);
+
+window.addEventListener("dragover", event => {
+  if (event.defaultPrevented) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = sessionState === "connected" ? "copy" : "none";
+});
+window.addEventListener("drop", event => {
+  if (event.defaultPrevented) return;
+  event.preventDefault();
+  if (sessionState !== "connected" || !event.dataTransfer) return;
+  enqueueFiles(filesFromDrop(event.dataTransfer));
+});
+document.addEventListener("paste", event => {
+  if (sessionState !== "connected" || !engine || isEditable(event.target) || !event.clipboardData) return;
+  const files = Array.from(event.clipboardData.files);
+  if (files.length > 0) {
+    event.preventDefault();
+    enqueueFiles(files);
+    return;
+  }
+  const text = event.clipboardData.getData("text/plain");
+  if (text.trim().length === 0) return;
+  event.preventDefault();
+  void sendTextValue(text, kindForText(text))
+    .then(() => notify("Pasted text sent."))
+    .catch(error => notify(`Unable to send: ${error instanceof Error ? error.message : "Unknown error"}`));
 });
 
 window.addEventListener("beforeunload", () => {
