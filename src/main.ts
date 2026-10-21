@@ -8,6 +8,7 @@ import { BridgeSession, type BridgeSessionState } from "./bridge-session";
 import { deriveSessionKey } from "./crypto";
 import type { ConnectionRoute } from "./peer";
 import { DEFAULT_MAX_MEMORY_RECEIVE_BYTES, FileSystemReceiveSink } from "./receive-sink";
+import { isTvModePreferred, resolveTvMode, setTvModePreferred, shouldAutoAcceptOnTv } from "./tv-mode";
 import { createReceivePortalUrl, isReceivePortalUrl } from "./receive-portal";
 import { filesFromDrop, TransferQueue, type TransferQueueSnapshot } from "./transfer-queue";
 import { TransferEngine, type IncomingRequest, type IncomingTransfer, type TransferKind, type TransferProgress } from "./transfer";
@@ -55,6 +56,12 @@ const isGuest = !pairingError && Boolean(joiningSession && joiningSecret);
 const isReceivePortal = isGuest && isReceivePortalUrl(currentUrl);
 const sessionSecret = joiningSecret ?? randomSecret();
 
+// TV display mode (?tv=1, remembered by this browser afterwards): the
+// instrument scaled for a living-room screen, receiving without prompts.
+const tvMode = resolveTvMode(params, isTvModePreferred());
+if (tvMode !== isTvModePreferred()) setTvModePreferred(tvMode);
+if (tvMode) document.body.classList.add("tv");
+
 // Both devices are equal peers: anything one can send, the other can too.
 // Only the receive-portal page is send-only, and only the host can mint a
 // receive link.
@@ -79,17 +86,21 @@ app.innerHTML = `
     <div class="stagebody" id="stagebody">
       <div id="invite-block">
         <div class="qr" id="qr-wrap"><canvas id="qr" width="232" height="232"></canvas></div>
+        <div class="invite-text">
         <p class="ask" id="ask">Scan with your other device.</p>
         <p class="code" id="session-code">SESSION <strong>&middot;&middot;&middot;&middot;</strong></p>
+        <p class="tv-note" id="tv-note-invite" hidden>TV DISPLAY &middot; FILES FROM THE PAIRED DEVICE ARE RECEIVED AND SAVED AUTOMATICALLY</p>
         <div class="invite-actions" id="invite-actions" hidden>
           <button type="button" id="invite-scan">Scan to join</button>
           <button type="button" id="invite-copy">Copy invite link</button>
           <p class="hint">No camera? Send this link to the other device.</p>
         </div>
+        </div>
       </div>
       <div id="link-block" hidden>
         <p class="peerline"><span id="peerline-local">THIS DEVICE</span> <strong>&larr;&rarr;</strong> <span id="peerline-peer">PAIRED DEVICE</span></p>
         <p class="route" id="route-line">ENCRYPTED</p>
+        <p class="tv-note" id="tv-note-link" hidden>TV DISPLAY &middot; INCOMING FILES SAVE AUTOMATICALLY</p>
         ${isReceivePortal ? '<p class="portal-note">THIS PAGE ONLY SENDS</p>' : ''}
         <button class="drop" id="drop-zone" aria-disabled="true">
           <span>Drop files here<small>OR TAP TO CHOOSE</small></span>
@@ -278,6 +289,15 @@ if (peerlineLocal) peerlineLocal.textContent = localName || "THIS DEVICE";
 if ((isGuest || pairingError) && qrWrap) qrWrap.hidden = true;
 if (isGuest && askEl) askEl.textContent = "Joining session.";
 if (isReceivePortal && askEl) askEl.textContent = "Send something to this device.";
+if (tvMode) {
+  if (!isGuest && !isReceivePortal && askEl) askEl.textContent = "Point your phone camera at the code.";
+  // A TV has no camera to scan with: the other device does the scanning.
+  if (inviteScan) inviteScan.hidden = true;
+  for (const id of ["tv-note-invite", "tv-note-link"]) {
+    const note = document.querySelector<HTMLElement>(`#${id}`);
+    if (note) note.hidden = false;
+  }
+}
 
 if (incomingSave && !FileSystemReceiveSink.isSupported()) incomingSave.hidden = true;
 
@@ -491,6 +511,10 @@ const setState = (state: BridgeSessionState, message?: string) => {
   if (noteDetail && noteSub !== undefined) noteDetail.textContent = noteSub;
   if (noteActions) noteActions.hidden = state !== "closed" && state !== "error";
   syncControls();
+  // A TV receiver waits with its session open: hold the screen awake from
+  // the moment the invite is up until the session ends.
+  tvWakeLock?.setActive(state === "waiting" || state === "connecting" || state === "connected");
+  if (tvMode && state === "connected") dropZone?.focus();
 };
 
 // Controls are live only while connected AND the browser is online: a
@@ -517,6 +541,7 @@ const setRoute = (route: ConnectionRoute) => {
 
 const progressAnnouncer = new ProgressMilestoneAnnouncer();
 const wakeLock = new TransferWakeLock();
+const tvWakeLock = tvMode ? new TransferWakeLock() : null;
 // Progress fires many times a second; only touch the lock on a state change.
 let transferActive = false;
 const setTransferActive = (active: boolean) => {
@@ -569,6 +594,7 @@ const showReceivedText = async (offer: IncomingTransfer, blob: Blob) => {
     receivedOpen.hidden = href === null;
     if (href) receivedOpen.href = href;
   }
+  if (tvMode) receivedCopy?.focus();
 };
 
 const requestLabel = (kind: TransferKind): string => {
@@ -614,6 +640,14 @@ const presentIncomingOffer = (offer: IncomingTransfer) => {
     engine?.accept(offer.transferId);
     return;
   }
+  // TV display: there is no remote-friendly way to answer a prompt for every
+  // file, and pairing with the session secret was the consent. Take whatever
+  // the memory sink can hold; anything larger keeps the manual panel below.
+  if (shouldAutoAcceptOnTv(tvMode, offer, DEFAULT_MAX_MEMORY_RECEIVE_BYTES)) {
+    engine?.accept(offer.transferId);
+    if (offer.kind === "file") notify(`Receiving ${offer.name} · ${formatBytes(offer.size)}`);
+    return;
+  }
   pendingOffer = offer;
 
   const canReceiveInMemory = offer.size <= DEFAULT_MAX_MEMORY_RECEIVE_BYTES;
@@ -632,6 +666,12 @@ const presentIncomingOffer = (offer: IncomingTransfer) => {
   if (incomingMemory) {
     incomingMemory.hidden = !canReceiveInMemory;
     incomingMemory.textContent = offer.kind === "file" ? "Receive in browser" : "Accept";
+  }
+  if (tvMode) {
+    // The one case a TV still decides by hand: land the remote's focus on
+    // the first available answer.
+    const target = [incomingSave, incomingMemory, incomingReject].find(button => button && !button.hidden);
+    target?.focus();
   }
 };
 
@@ -799,7 +839,7 @@ const bridge = new BridgeSession(undefined, {
       pairingUrl.hash = "";
       pairingUrl.searchParams.set("session", sessionId);
       pairingUrl.hash = `key=${sessionSecret}`;
-      void QRCode.toCanvas(canvas, pairingUrl.toString(), { width: 264, margin: 1, color: { dark: "#07101f", light: "#ffffff" } })
+      void QRCode.toCanvas(canvas, pairingUrl.toString(), { width: tvMode ? 560 : 264, margin: 1, color: { dark: "#07101f", light: "#ffffff" } })
         .then(() => {
           // qrcode sets inline px sizes that override the responsive CSS and
           // leave the code off-centre in its frame.
