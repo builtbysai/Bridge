@@ -40,6 +40,34 @@ test("TV display mode is on the page and says files save automatically", async (
   await hostContext.close();
 });
 
+test("TV display mode is remembered on a TV-sized screen, and ?tv=0 clears it", async ({ browser }) => {
+  const tvContext = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
+  const page = await tvContext.newPage();
+  await page.goto("/?tv=1");
+  await expect(page.locator("body")).toHaveClass(/tv/);
+  await page.goto("/");
+  await expect(page.locator("body")).toHaveClass(/tv/);
+  await page.goto("/?tv=0");
+  await expect(page.locator("body")).not.toHaveClass(/tv/);
+  await page.goto("/");
+  await expect(page.locator("body")).not.toHaveClass(/tv/);
+  await tvContext.close();
+});
+
+test("a TV link opened on a phone shows the layout once, fits, and does not stick", async ({ browser }) => {
+  const phoneContext = await browser.newContext({ viewport: { width: 412, height: 915 } });
+  const page = await phoneContext.newPage();
+  await page.goto("/?tv=1");
+  await expect(page.locator("body")).toHaveClass(/tv/);
+  const overflows = await page.evaluate(
+    () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1
+  );
+  expect(overflows).toBe(false);
+  await page.goto("/");
+  await expect(page.locator("body")).not.toHaveClass(/tv/);
+  await phoneContext.close();
+});
+
 test("a file sent to the TV is received and downloaded with no prompt", async ({ browser }) => {
   const { host, guest, close } = await pairWithTv(browser);
   await expect(host.locator("#tv-note-link")).toBeVisible();

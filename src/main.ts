@@ -8,7 +8,7 @@ import { BridgeSession, type BridgeSessionState } from "./bridge-session";
 import { deriveSessionKey } from "./crypto";
 import type { ConnectionRoute } from "./peer";
 import { DEFAULT_MAX_MEMORY_RECEIVE_BYTES, FileSystemReceiveSink } from "./receive-sink";
-import { isTvModePreferred, resolveTvMode, setTvModePreferred, shouldAutoAcceptOnTv } from "./tv-mode";
+import { decideTvMode, isTvModePreferred, isTvSizedViewport, setTvModePreferred, shouldAutoAcceptOnTv } from "./tv-mode";
 import { createReceivePortalUrl, isReceivePortalUrl } from "./receive-portal";
 import { filesFromDrop, TransferQueue, type TransferQueueSnapshot } from "./transfer-queue";
 import { TransferEngine, type IncomingRequest, type IncomingTransfer, type TransferKind, type TransferProgress } from "./transfer";
@@ -56,10 +56,19 @@ const isGuest = !pairingError && Boolean(joiningSession && joiningSecret);
 const isReceivePortal = isGuest && isReceivePortalUrl(currentUrl);
 const sessionSecret = joiningSecret ?? randomSecret();
 
-// TV display mode (?tv=1, remembered by this browser afterwards): the
-// instrument scaled for a living-room screen, receiving without prompts.
-const tvMode = resolveTvMode(params, isTvModePreferred());
-if (tvMode !== isTvModePreferred()) setTvModePreferred(tvMode);
+// TV display mode (?tv=1): the instrument scaled for a living-room screen,
+// receiving without prompts. The choice is remembered only on a TV-sized
+// screen, so opening a TV link on a phone shows the layout for that visit
+// and never sticks (see decideTvMode).
+const tvDecision = decideTvMode(
+  params,
+  isTvModePreferred(),
+  isTvSizedViewport(window.innerWidth, window.innerHeight)
+);
+const tvMode = tvDecision.enabled;
+if (tvDecision.persist !== null && tvDecision.persist !== isTvModePreferred()) {
+  setTvModePreferred(tvDecision.persist);
+}
 if (tvMode) document.body.classList.add("tv");
 
 // Both devices are equal peers: anything one can send, the other can too.
@@ -197,6 +206,11 @@ app.innerHTML = `
         <p class="hint" id="relay-only-help">Route everything through the TURN relay so the devices never connect directly and never see each other's network address.</p>
         <p class="hint" id="relay-only-status" role="status"></p>
         <div class="row" id="relay-only-actions" hidden><button type="button" id="relay-only-restart">Restart session now</button></div>
+      </div>
+      <div class="setting">
+        <label>TV display</label>
+        <p class="hint" id="tv-display-help">Couch-scale layout: a pairing code you can read across the room, and incoming files saved automatically. On a TV-sized screen this browser remembers the choice. On a smaller screen it applies to this visit only.</p>
+        <div class="row"><button type="button" id="tv-display-toggle">${tvMode ? "Exit TV display" : "Use as TV display"}</button></div>
       </div>
     </section>
 
@@ -1058,6 +1072,14 @@ settingsPanel?.addEventListener("keydown", event => {
   settingsPanel.hidden = true;
   settingsToggle?.setAttribute("aria-expanded", "false");
   settingsToggle?.focus();
+});
+// TV display is switched by address, so the toggle just navigates: ?tv=1
+// enters (and sticks only on a TV-sized screen), ?tv=0 leaves and clears
+// any stored preference. decideTvMode applies the rules on load.
+document.querySelector<HTMLButtonElement>("#tv-display-toggle")?.addEventListener("click", () => {
+  const url = new URL(window.location.href);
+  url.searchParams.set("tv", tvMode ? "0" : "1");
+  window.location.replace(url.toString());
 });
 deviceNameForm?.addEventListener("submit", event => {
   event.preventDefault();

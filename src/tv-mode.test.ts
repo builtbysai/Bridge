@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  decideTvMode,
   isTvModePreferred,
+  isTvSizedViewport,
   resolveTvMode,
   setTvModePreferred,
   shouldAutoAcceptOnTv,
@@ -43,6 +45,41 @@ describe("resolveTvMode", () => {
     expect(resolveTvMode(new URLSearchParams(""), false)).toBe(false);
     expect(resolveTvMode(new URLSearchParams("session=abc"), true)).toBe(true);
     expect(resolveTvMode(new URLSearchParams("tv=bogus"), true)).toBe(true);
+  });
+});
+
+describe("isTvSizedViewport", () => {
+  it("counts TV and desktop resolutions as TV-sized", () => {
+    expect(isTvSizedViewport(1920, 1080)).toBe(true);
+    expect(isTvSizedViewport(960, 540)).toBe(true);
+    expect(isTvSizedViewport(1280, 720)).toBe(true);
+  });
+
+  it("never counts a phone, in portrait or landscape", () => {
+    expect(isTvSizedViewport(412, 915)).toBe(false);
+    expect(isTvSizedViewport(915, 412)).toBe(false);
+    expect(isTvSizedViewport(390, 844)).toBe(false);
+  });
+});
+
+describe("decideTvMode", () => {
+  it("sticks after ?tv=1 only on a TV-sized screen", () => {
+    expect(decideTvMode(new URLSearchParams("tv=1"), false, true)).toEqual({ enabled: true, persist: true });
+    expect(decideTvMode(new URLSearchParams("tv=1"), false, false)).toEqual({ enabled: true, persist: null });
+  });
+
+  it("always clears the stored preference on ?tv=0", () => {
+    expect(decideTvMode(new URLSearchParams("tv=0"), true, true)).toEqual({ enabled: false, persist: false });
+    expect(decideTvMode(new URLSearchParams("tv=0"), true, false)).toEqual({ enabled: false, persist: false });
+  });
+
+  it("honors a stored preference on a TV-sized screen", () => {
+    expect(decideTvMode(new URLSearchParams(""), true, true)).toEqual({ enabled: true, persist: null });
+    expect(decideTvMode(new URLSearchParams(""), false, true)).toEqual({ enabled: false, persist: null });
+  });
+
+  it("ignores and clears a stored preference stranded on a small screen", () => {
+    expect(decideTvMode(new URLSearchParams(""), true, false)).toEqual({ enabled: false, persist: false });
   });
 });
 
