@@ -21,7 +21,7 @@ Bridge is deliberately not a cloud drive, chat app, or notes workspace. The core
 
 ### TV display mode
 
-Open Bridge on a TV browser with `?tv=1` and it becomes a living-room receiver: the pairing QR and session code render at reading distance, the screen stays awake while the session is open, and transfers from the paired device are received and saved automatically (a remote has no cheap way to answer a per-file prompt; pairing with the session secret is the consent). Anything too large for the browser-memory receive limit still asks, with the reason stated. The mode is remembered per browser, `?tv=0` turns it off, and the phone or laptop on the other side needs nothing special — it scans the TV's code as usual.
+Open Bridge on a TV browser with `?tv=1` and it becomes a living-room receiver: the pairing QR and session code render at reading distance, the screen stays awake while the session is open, and transfers from the paired device are received and saved automatically (a remote has no cheap way to answer a per-file prompt; pairing with the session secret is the consent). Anything too large for the browser-memory receive limit still asks, with the reason stated. The mode is remembered per browser only on a TV-sized screen: opening the TV link on a phone shows the layout for that visit and never sticks, and a preference stranded on a small screen clears itself. `?tv=0` turns it off anywhere, Settings carries the same switch, and the phone or laptop on the other side needs nothing special: it scans the TV's code as usual.
 
 ## Why this project exists
 

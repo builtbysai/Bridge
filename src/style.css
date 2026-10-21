@@ -540,7 +540,10 @@ body.tv .panel textarea:focus-visible {
   outline: 4px solid var(--paper);
   outline-offset: 5px;
 }
-body.tv .stage { width: min(1240px, calc(100% - 96px)); }
+body.tv .stage { width: min(1240px, calc(100% - 32px)); }
+@media (min-width: 1100px) {
+  body.tv .stage { width: min(1240px, calc(100% - 96px)); }
+}
 body.tv .masthead { font-size: 19px; padding: 30px 0; gap: 24px; }
 body.tv .lamp { width: 14px; height: 14px; }
 body.tv .gear { padding: 10px 6px; }
@@ -552,7 +555,7 @@ body.tv #invite-block {
   flex-direction: row;
   justify-content: center;
   width: 100%;
-  gap: 72px;
+  gap: clamp(32px, 5vw, 72px);
   text-align: left;
 }
 body.tv .invite-text {
@@ -562,8 +565,8 @@ body.tv .invite-text {
   gap: 24px;
 }
 body.tv .qr { padding: 28px; }
-body.tv .qr canvas { width: 480px; height: 480px; }
-body.tv .ask { font-size: 40px; }
+body.tv .qr canvas { width: min(480px, 76vw); height: auto; aspect-ratio: 1; }
+body.tv .ask { font-size: clamp(29px, 3.4vw, 40px); }
 body.tv .code { font-size: 22px; }
 body.tv .code strong { font-size: 32px; }
 body.tv .tv-note { font-size: 15px; margin: 0; line-height: 1.7; }
@@ -607,3 +610,41 @@ body.tv .stagebody { order: 3; }
 body.tv .stage > .panel { order: 4; }
 body.tv .stage > .toast { order: 5; }
 body.tv .statusline { order: 6; }
+
+/* TV display on a small screen: the layout is only ever *entered* here by
+   link or by the Settings toggle, never by a remembered preference, but
+   while it is on it must still fit. The invite stacks, the QR and type
+   scale to the viewport, and targets stay large without overflowing. */
+@media (max-width: 900px) {
+  body.tv .masthead { font-size: 14px; padding: 22px 0; gap: 14px; }
+  body.tv .lamp { width: 11px; height: 11px; }
+  body.tv .stagebody { gap: 28px; padding: 36px 0; }
+  body.tv .stagebody.left { padding-top: 40px; }
+  body.tv #invite-block { flex-direction: column; gap: 28px; text-align: center; }
+  body.tv .invite-text { align-items: center; text-align: center; gap: 18px; }
+  body.tv .qr { padding: 18px; }
+  body.tv .code { font-size: 17px; }
+  body.tv .code strong { font-size: 25px; }
+  body.tv .tv-note { font-size: 13px; }
+  body.tv .invite-actions { justify-items: center; margin-top: 4px; }
+  body.tv .invite-actions button { min-height: 60px; padding: 14px 22px; font-size: 18px; }
+  body.tv .hint { font-size: 13px; }
+  body.tv .peerline { font-size: 16px; }
+  body.tv .route { font-size: 13px; }
+  body.tv .drop { min-height: 160px; margin-top: 28px; font-size: 20px; }
+  body.tv .drop small { font-size: 13px; }
+  body.tv .actions button { font-size: 19px; padding: 20px 22px; min-height: 68px; }
+  body.tv .actions button .sub { font-size: 13px; }
+  body.tv .panel { padding: 24px 0; }
+  body.tv .panel h2 { font-size: 23px; }
+  body.tv .panel .detail { font-size: 16px; }
+  body.tv .panel button, body.tv .panel .btn { min-height: 60px; padding: 16px 22px; font-size: 18px; }
+  body.tv .panel pre { font-size: 16px; padding: 16px; }
+  body.tv .panel textarea { font-size: 16px; padding: 16px; }
+  body.tv .toast { font-size: 16px; }
+  body.tv .xfer { font-size: 18px; }
+  body.tv .qrow { font-size: 16px; padding: 14px 0; }
+  body.tv .statusline { font-size: 13.5px; padding: 18px 0 24px; }
+  body.tv .setting label { font-size: 18px; }
+  body.tv .setting input[type="text"] { min-height: 56px; font-size: 17px; }
+}
